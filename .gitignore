@@ -1,0 +1,6 @@
+# Caché local de símbolos, navegación y ayuda contextual de JASS en VS Code.
+# Se regenera automáticamente y puede contener rutas absolutas de este equipo.
+.vscode/jass-cache/
+
+# Caché local del registro de habilidades de herramientas de IA.
+.atl/.skill-registry.cache.json

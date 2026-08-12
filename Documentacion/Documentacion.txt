@@ -1,0 +1,720 @@
+// ============================================================================
+// DOCUMENTACION OFICIAL Y MANUAL DE EDICION
+// PROYECTO: ORCOS VS HUMANOS INFINITO (OvsH)  -  vJASS / WC3 1.27b
+// ============================================================================
+// Bienvenido al codigo fuente de Orcos vs Humanos Infinito.
+// Si eres un editor nuevo y quieres AGREGAR o MODIFICAR un HEROE, una HABILIDAD
+// o un ITEM sin romper el mapa, ESTE ES EL PRIMER LUGAR QUE DEBES LEER.
+//
+// Este manual existe por una sola razon: en este mapa, casi NADA vive en un solo
+// lugar. Un heroe no es "un heroe": es una unidad en el Object Editor + una
+// entrada de stats para los bots y el comando -as + una casilla en la ruleta del
+// modo aleatorio + un detonador de seleccion (Wisp/Alma). Una habilidad de area
+// no es "una habilidad": puede necesitar tambien su anillo visual + su radio de
+// asistencias + sus datos de velocidad de ataque. Si tocas el Editor de Objetos
+// y te olvidas de SINCRONIZAR los sistemas internos, el mapa NO se rompe de golpe:
+// se rompe a medias (un bot que no sabe tu rango, un -as que miente, una ruleta
+// que reparte un heroe inexistente, un area sin anillo). Esas fallas son dificiles
+// de notar y peores de depurar. Esta guia te dice EXACTAMENTE que tocar y donde.
+//
+// FILOSOFIA DE ESTA VERSION:
+//   1. Claridad de MOBA: los tooltips muestran DATOS REALES.
+//   2. Viabilidad a Nivel 10: todas las habilidades estan balanceadas para que
+//      siempre valga la pena maxearlas.
+//   3. Transparencia de Sistemas: el jugador ve areas de efecto ocultas y su
+//      velocidad de ataque real gracias a sistemas internos (que TU debes
+//      mantener sincronizados al editar).
+//
+// REGLA DE ORO GLOBAL:
+//   Toda modificacion SIEMPRE empieza en el Editor de Objetos/Habilidades.
+//   Luego vienes a los sistemas internos (vJASS) a "sincronizar" ese cambio.
+//   Si buscas un ID en los sistemas internos y NO ESTA, primero entiende POR QUE
+//   (ver la matriz de la PARTE D). Si el sistema en cuestion solo lista
+//   EXCEPCIONES (peligrosidad, buffs de AS, anillos, asistencias), que no este
+//   es correcto. Si es un sistema que necesita CONOCER A TODOS (ruleta de heroes,
+//   IA_Data, seleccion), su ausencia ES el bug.
+//
+// CONVENCION DE RAWCODES:
+//   Heroes, habilidades, items y buffs se referencian por su codigo de 4
+//   caracteres entre comillas simples: 'Ekee', 'Obla', 'H00P', 'A023', 'ofro'.
+//   Las FORMAS DE TRANSFORMACION tienen su PROPIO rawcode (ver PARTE C12).
+// ============================================================================
+
+
+// ============================================================================
+// INDICE DEL MANUAL
+// ============================================================================
+// PARTE A - MAPA DE ARCHIVOS (que sistema vive donde)
+//
+// PARTE B - FLUJOS DE TRABAJO (checklists paso a paso)
+//   B1. AGREGAR UN HEROE NUEVO
+//   B2. MODIFICAR UN HEROE EXISTENTE
+//   B3. AGREGAR UNA HABILIDAD NUEVA
+//   B4. MODIFICAR UNA HABILIDAD EXISTENTE
+//   B5. AGREGAR / MODIFICAR UN ITEM
+//
+// PARTE C - SISTEMAS EN DETALLE
+//   C1.  Como encontrar el ID de una habilidad rapido
+//   C2.  Sistema de SELECCION de heroes (Wisp/Alma + detonadores Pick + zonas)
+//   C3.  Modo ALEATORIO DE HEROES (la ruleta) - Core_Indice_Heroes
+//   C4.  Modo ALEATORIO DE HABILIDADES - Modo_Aleatorio_DB (slots/faccion/rango)
+//   C5.  IA_Data (stats de heroe: alimenta a los BOTS y al comando -as)
+//   C6.  Velocidad de ataque (-as) - IA_Data_Buffs / IA_Data_Items
+//   C7.  Areas de efecto: ANILLOS visuales (Animacion_AoE) + ASISTENCIAS (tabla)
+//   C8.  Habilidades complejas detonadas (carpeta CUSTOM_SKILLS)
+//   C9.  Tooltips y numeros decimales
+//   C10. Campos bloqueados y el peligro de UMSWE
+//   C11. Comandos del juego
+//   C12. Transformaciones (rawcode propio)
+//
+// PARTE D - MATRIZ DE SINCRONIZACION (la chuleta: que archivos tocar segun el cambio)
+//
+// PARTE E - [ESPACIO RESERVADO PARA FUTURAS ACTUALIZACIONES]
+// ============================================================================
+
+
+
+// ############################################################################
+// PARTE A - MAPA DE ARCHIVOS
+// ############################################################################
+// El "Codigo Activo" del mapa = Documentacion/init.j (legacy generado por el
+// editor) + cuatro carpetas nuevas y modulares: SISTEMA_CORE, SISTEMA_IA,
+// EXTRAS, CUSTOM_SKILLS (y COMBINACION_OBJETOS para fusiones de items).
+//
+// AVISO: Documentacion/_REFERENCIA_GLOBAL.j esta DESACTUALIZADO. Usalo SOLO para
+// consultar nombres de globales del editor (udg_*, gg_*). Nunca tomes su logica.
+//
+// Archivos que importan para editar HEROES / HABILIDADES / ITEMS:
+//
+//   SISTEMA_CORE/
+//     Core_Indice_Heroes.j ...... LA RULETA. Lista todos los heroes pickeables
+//                                  por faccion + el total. (PARTE C3)
+//     Core_Logica_Random.j ...... Ejecuta el All Random: crea el heroe al azar,
+//                                  borra el Wisp/Alma y registra el heroe en la IA.
+//     Core_Menu_Heroes_Click.j .. Detecta el modo elegido (All Pick / All Random
+//                                  / mixto) en el menu del Master.
+//     Core_Menu_Habilidades.j .... Pantalla 3 (Clasico vs Aleatorio de
+//                                  habilidades). Fuerza Clasico si hay bots.
+//
+//   SISTEMA_IA/
+//     IA_Data.j ................. STATS por heroe (rango, dano, dados, atributo,
+//                                  AS base, proyectil, etc.) + peligrosidad.
+//                                  Lo consumen los BOTS y el comando -as. (C5)
+//     IA_Data_Buffs.j ........... Buffs/auras/habilidades que MODIFICAN la
+//                                  velocidad de ataque. (C6)
+//     IA_Data_Items.j ........... Base de datos de ITEMS (stats, tags, recetas,
+//                                  AS de items). (C6, B5)
+//     (el resto de SISTEMA_IA es el comportamiento del bot; ver
+//      SISTEMA_IA/GUIA_DEBUG_BOTS.md. No se toca al agregar contenido.)
+//
+//   EXTRAS/
+//     Modo_Aleatorio_DB.j ....... CATALOGO de TODAS las habilidades de heroe por
+//                                  columna (Q/W/E/R) + restricciones de faccion y
+//                                  de rango para el modo aleatorio. Tambien sirve
+//                                  de "indice rapido" nombre->ID. (C1, C4)
+//     Animacion_AoE.j ........... Anillo visual rojizo/gris para areas SIN
+//                                  indicador propio. (C7)
+//     tabla.j ................... Multiboard K/D/A + sistema de ASISTENCIAS
+//                                  (incluye los radios AoE de control/cura). (C7)
+//     Comando_AS.j .............. Comando -as (desglose de velocidad de ataque).
+//     (otros EXTRAS: kills, voto, merito, anti-backdoor, economia, zoom,
+//      easter eggs, deny... cada comando suele vivir en su propio archivo.)
+//
+//   CUSTOM_SKILLS/
+//     Una habilidad por archivo, programada a mano en vJASS porque el Object
+//     Editor no soporta su efecto: Gancho_de_Carnicero.j, Torbellino de
+//     Cuchillas.j, Quebrantavidas.j, Fisure.j, Habilidad_Techies_Barril.j.
+//     Cada archivo trae en su cabecera que campos ajustar. (C8)
+//
+//   DETONADORES GUI (en el World Editor, NO estan como .j en el proyecto):
+//     Carpeta "Pick" : un detonador por heroe que detecta el Wisp/Alma en la
+//                      region de ese heroe y le entrega el heroe al jugador. (C2)
+
+
+
+// ############################################################################
+// PARTE B - FLUJOS DE TRABAJO (CHECKLISTS)
+// ############################################################################
+// Sigue el checklist COMPLETO. Saltarte un paso no rompe el mapa de inmediato:
+// lo deja a medias (la peor clase de bug). Marca cada casilla.
+
+
+// ============================================================================
+// B1. AGREGAR UN HEROE NUEVO
+// ============================================================================
+// Un heroe nuevo toca CINCO sistemas obligatorios y dos opcionales. Orden:
+//
+// [1] OBJECT EDITOR (origen de todo)
+//     - Crea la unidad-heroe. Anota su rawcode (ej. 'H0AB').
+//     - Si tiene FORMA DE TRANSFORMACION, anota TAMBIEN el rawcode de la forma.
+//     - Dale sus 4 habilidades (Q/W/E/R) y la habilidad fija OBLIGATORIA
+//       'A023' (Entrenamiento). TODOS los heroes deben portar 'A023'.
+//
+// [2] RULETA / INDICE  ->  SISTEMA_CORE/Core_Indice_Heroes.j   (C3)
+//     - Agrega el rawcode al array de su faccion:
+//         udg_Array_Heroes_Humanos[N] = 'H0AB'   (o ..._Orcos[N])
+//     - INCREMENTA el contador de esa faccion:
+//         udg_Config_Total_Heroes[1] = <nuevo total humanos>   (indice 1=Hum, 2=Orc)
+//     - Si no haces esto, el All Random NUNCA repartira tu heroe (o, peor, el
+//       contador y el array quedan desfasados y la ruleta reparte basura).
+//
+// [3] STATS DE IA / -as  ->  SISTEMA_IA/IA_Data.j               (C5)
+//     - Agrega los TRES bloques del heroe (copia un heroe parecido):
+//         call RegisterHeroStats(     'H0AB', armorBase, dmgBase, dados, caras, rango, ATTR_x, esMelee)
+//         call RegisterHeroAttributes('H0AB', Fue, Agi, Int, +Fue, +Agi, +Int)
+//         call RegisterHeroDynamics(  'H0AB', dmgPoint, ASbase, projSpeed, moveSpeed, castPoint, castBackswing)
+//     - Sin esto: los BOTS usan valores por defecto (juegan mal con tu heroe) y
+//       el comando -as muestra una base inventada. Es OBLIGATORIO aunque no
+//       pienses en bots: -as lo usan los humanos.
+//     - Si tiene transformacion, registra TAMBIEN la forma alterna (su rawcode).
+//     - PELIGROSIDAD (opcional): si tu heroe tiene CC fuerte/burst oculto, suma
+//       una linea RegisterHeroDanger('H0AB', 1.x) al final (ver rubrica en C5).
+//
+// [4] SELECCION (PICK)  ->  Detonador GUI en la carpeta "Pick" + region + maniqui (C2)
+//     - Crea la REGION de seleccion del heroe (ej. Reg_Sel_<Nombre>) dentro de la
+//       Zona de Seleccion de su faccion (ZonaHumanos o ZonaOrcos).
+//     - Coloca el MANIQUI del heroe (la unidad que se ve para elegir) en esa zona.
+//     - DUPLICA un detonador Pick existente y cambialo a tu heroe (ver C2 para la
+//       estructura exacta). Lo CRITICO: al final DEBE registrar el heroe en la IA:
+//         custom script:  call IACore_RegisterGlobalHero(bj_lastCreatedUnit)
+//         custom script:  if GetPlayerController(GetOwningPlayer(bj_lastCreatedUnit)) == MAP_CONTROL_COMPUTER then
+//         custom script:      call IACore_RegisterHero(bj_lastCreatedUnit)
+//         custom script:  endif
+//     - El All Random (paso [2]) YA hace este registro solo; el detonador Pick es
+//       el unico camino que tienes que cablear a mano.
+//
+// [5] HABILIDADES DEL HEROE  ->  ver B3 para CADA una de sus 4 habilidades.
+//     - Si reutiliza habilidades que YA existen en el pool, normalmente no hay
+//       nada extra que hacer salvo confirmar slot/faccion/rango (C4).
+//     - Si trae habilidades NUEVAS, sigue B3 entera por cada una.
+//
+// [6] (OPCIONAL) Si tu heroe usa habilidades exclusivas que NO deben entrar al
+//     modo aleatorio (transformaciones), dejalas FUERA de Modo_Aleatorio_DB o
+//     comentadas, igual que las existentes marcadas [DESACTIVADA: transformacion].
+//
+// VERIFICACION FINAL EN EL EDITOR/JUEGO:
+//     - El heroe aparece como maniqui y al tocarlo con el Wisp/Alma nace bien.
+//     - Sale en el All Random.
+//     - -as muestra su base correcta.
+//     - Un bot puede jugarlo (si aplica) sin warnings de datos faltantes.
+
+
+// ============================================================================
+// B2. MODIFICAR UN HEROE EXISTENTE
+// ============================================================================
+// Segun QUE cambies:
+//
+//   * Cambias DANO base / dados / atributo principal / armadura base / rango:
+//       -> Sincroniza el bloque del heroe en IA_Data.j (RegisterHeroStats /
+//          RegisterHeroAttributes). El -as y los bots leen de ahi. (C5)
+//
+//   * Cambias el "Tiempo muerto" (cooldown base de ataque = velocidad base):
+//       -> Actualiza el 2do dato de RegisterHeroDynamics (ASbase) en IA_Data.j.
+//          Es el numero mas critico para -as. (C5/C6)
+//
+//   * Cambias velocidad de movimiento / proyectil / punto de dano / cast points:
+//       -> Sincroniza RegisterHeroDynamics en IA_Data.j.
+//
+//   * Cambias el RAWCODE del heroe (raro): hay que actualizarlo en TODOS los
+//       lugares de la PARTE D que listan heroes. Evitalo si puedes.
+//
+//   * Solo cambias modelo/icono/nombre/tooltip: normalmente NO toca sistemas
+//       internos (salvo tooltips manuales, ver C9).
+
+
+// ============================================================================
+// B3. AGREGAR UNA HABILIDAD NUEVA
+// ============================================================================
+// "Habilidad nueva" = un rawcode de habilidad que el mapa no tenia. Pasos:
+//
+// [1] OBJECT EDITOR: crea la habilidad. Anota su rawcode (ej. 'A0XY') y su BUFF
+//     si genera uno (ej. 'B0XY'). Define sus 10 niveles (6 si es ultimate R).
+//
+// [2] MODO ALEATORIO  ->  EXTRAS/Modo_Aleatorio_DB.j   (C4)   [casi siempre]
+//     - Mira en el Editor en que COLUMNA del card de comandos cae el boton:
+//       columna 0=Q, 1=W, 2=E, 3=R (ultimate).
+//     - Registra:  call RegisterAbil('A0XY', SLOT_Q)   // o SLOT_W/E/R
+//     - Si es EXCLUSIVA de una faccion:  call TagFaction('A0XY', 1)  // 1=Hum, 2=Orc
+//     - Si SOLO sirve a heroes de rango: call TagRanged('A0XY')
+//     - Regla: una habilidad solo se intercambia con otra de SU MISMA columna.
+//     - EXCEPCION: las habilidades de TRANSFORMACION NO se registran aqui (o se
+//       dejan comentadas como [DESACTIVADA: transformacion]).
+//     - Bonus: registrarla aqui la vuelve buscable por nombre con Ctrl+F (C1).
+//
+// [3] VELOCIDAD DE ATAQUE  ->  IA_Data_Buffs.j   (C6)   [SOLO si modifica AS]
+//     - Si la habilidad SUBE o BAJA la velocidad de ataque (buff/aura/debuff),
+//       registrala segun su tipo (buff simple, aura propia, self-buff o efecto
+//       escalado por nivel). Plantillas exactas en C6 y en la cabecera del archivo.
+//     - Si NO toca la AS (un stun, un dano, una cura): NO la registres aqui. Que
+//       falte es CORRECTO. IA_Data_Buffs solo lista fuentes de AS.
+//
+// [4] ANILLO VISUAL DE AREA  ->  EXTRAS/Animacion_AoE.j   (C7)   [condicional]
+//     - SOLO si la habilidad hace dano/efecto en AREA y NO tiene ya un indicador
+//       visual propio del juego (la mayoria de las AoE custom no lo tienen).
+//     - Si el jugador no puede ver hasta donde llega el area, agrega el anillo
+//       (7 pasos: IsRegistered + modo + tipo de rayo + segmentos + AoE por nivel
+//       + duracion + opcional canalizada/toggle). Ver C7.
+//     - Si el area ya tiene indicador (o no es de area): SALTA este paso.
+//
+// [5] ASISTENCIAS  ->  EXTRAS/tabla.j   (C7, modelo de 3 vias)   [condicional]
+//     - CLAVE: el dano normal ya da asistencia solo (Via 1). Pero un CC
+//       DETERMINANTE con poco o ningun dano (stun, hex, silencio, GANCHO del
+//       Butcher) jamas alcanza el umbral de dano -> sin registrarlo, su autor se
+//       queda SIN asistencia. Ese es el caso que SI hay que registrar (Via 2).
+//     - Segun como entrega el efecto (detalle y plantillas en C7):
+//       * Control con TARGET unitario:   MB_IsControlSpell
+//       * Control/dano en AREA circulo:  MB_AoEControlRadius (radio por nivel)
+//       * Control/dano en AREA linea:    MB_AoEIsLine + MB_AoELineDist (+ ancho)
+//       * AoE con retardo/periodica:     MB_OnAoEDelayed
+//       * Cura con TARGET unitario:      MB_IsHealSpell        (Via 3)
+//       * Cura en AREA (sin target):     MB_AoEHealRadius      (Via 3)
+//
+// [6] HABILIDAD DETONADA  ->  CUSTOM_SKILLS/   (C8)   [solo si el editor no basta]
+//     - Si el efecto no existe en el Object Editor (porcentajes de vida, ganchos,
+//       mecanicas raras), se programa a mano. Crea/edita el archivo de la
+//       habilidad. Su cabecera explica los campos. (Las habilidades base normales
+//       NO necesitan esto.)
+//
+// [7] TOOLTIP  ->  Object Editor   (C9)
+//     - Si algun numero del texto esta escrito "en bruto" (no por referencia
+//       dinamica <A0XY,DataX>), actualiza el tooltip en LOS 10 NIVELES a mano.
+
+
+// ============================================================================
+// B4. MODIFICAR UNA HABILIDAD EXISTENTE
+// ============================================================================
+// Cambia en el Object Editor y luego sincroniza SOLO lo que ese cambio afecte:
+//
+//   * Cambias el % / duracion / dano de AS:
+//       -> IA_Data_Buffs.j: corrige el valor por nivel del buff/habilidad. (C6)
+//       -> El comando -as se actualiza solo (lee de ahi).
+//
+//   * Cambias el AREA DE EFECTO (AoE):
+//       -> Animacion_AoE.j: corrige GetRingAoE por nivel (si tiene anillo). (C7)
+//       -> tabla.j: corrige el radio en MB_AoEControlRadius/HealRadius (si esta
+//          registrada para asistencias). (C7)
+//       -> Ambos deben COINCIDIR con el nuevo valor del editor.
+//
+//   * Cambias la DURACION del efecto/area:
+//       -> Animacion_AoE.j: corrige GetRingDuration (si tiene anillo). (C7)
+//
+//   * Cambias un valor "detonado" (esta en CUSTOM_SKILLS):
+//       -> Edita el archivo de la habilidad (NO el Object Editor). (C8)
+//
+//   * Reemplazas una habilidad por una COPIA con NUEVO rawcode (ej. copias 'AHre'
+//     y creas 'A0Z1'):
+//       -> Cambia el ID viejo por el nuevo en Modo_Aleatorio_DB.j y en CUALQUIER
+//          otro sistema que lo liste (AS, anillos, asistencias). Si no, el modo
+//          aleatorio sigue repartiendo la habilidad VIEJA. (C1/C4 + PARTE D)
+//
+//   * Cambias solo numeros referenciados dinamicamente en el tooltip: nada que
+//     hacer. Si hay numeros "en bruto": actualizalos a mano (C9).
+
+
+// ============================================================================
+// B5. AGREGAR / MODIFICAR UN ITEM
+// ============================================================================
+//   -> Object Editor: crea/edita el item. Anota rawcode y buff (si aplica).
+//   -> IA_Data_Items.j: agrega UNA linea por cada propiedad que aplique
+//      (dano plano, AS, tags tacticos, costo, receta, stun, etc.). Usa la Esfera
+//      de Hielo 'ofro' como plantilla maestra. Si un item da AS, su buff TAMBIEN
+//      debe estar en IA_Data_Buffs.j (seccion de valores fijos). (C6)
+//   -> Fusiones/recetas: COMBINACION_OBJETOS/ (Fusiones.j, Fusion_Varitas.j).
+//   -> Como con todo: lo no registrado retorna 0/false (la calculadora lo ignora,
+//      que suele ser correcto para items sin efecto mecanico relevante).
+
+
+
+// ############################################################################
+// PARTE C - SISTEMAS EN DETALLE
+// ############################################################################
+
+
+// ----------------------------------------------------------------------------
+// C1. COMO ENCONTRAR EL ID DE UNA HABILIDAD RAPIDO
+// ----------------------------------------------------------------------------
+// El modo aleatorio obliga a tener TODAS las habilidades de heroe registradas en
+// un solo archivo con su nombre. Usalo como indice:
+//   RUTA: EXTRAS/Modo_Aleatorio_DB.j
+//   Ctrl+F por el nombre de la habilidad -> obtienes su rawcode de 4 digitos.
+//
+// IMPORTANTE: si creas una COPIA de una habilidad (copias 'AHre' y haces 'A001')
+// y reemplazas la original, DEBES cambiar el ID viejo por el nuevo aqui y en todo
+// otro sistema que lo liste. Si no, el modo aleatorio dara la habilidad vieja.
+
+
+// ----------------------------------------------------------------------------
+// C2. SISTEMA DE SELECCION DE HEROES (Wisp / Alma + detonadores Pick + zonas)
+// ----------------------------------------------------------------------------
+// COMO FUNCIONA HOY:
+//   Cuando el Master elige All Pick (o "Pick para un equipo"), cada jugador NO
+//   controla un heroe todavia: controla un MANIQUI movil:
+//     - Humanos controlan un WISP   (rawcode 'ewsp') en la Zona de Seleccion
+//       izquierda (region gg_rct_ZonaHumanos).
+//     - Orcos controlan un ALMA CORRUPTA ('e006') en la Zona derecha
+//       (region gg_rct_ZonaOrcos).
+//   En esas zonas estan los MANIQUIES de todos los heroes (uno por heroe),
+//   "purificados" por EXTRAS/Zona_Seleccion.j: invulnerables, sin colision, en
+//   pausa, para que solo sirvan de vitrina.
+//   El jugador mueve su Wisp/Alma hasta el maniqui del heroe que quiere. Cada
+//   heroe tiene su REGION (Reg_Sel_<Heroe>). Al entrar el Wisp/Alma:
+//     -> un DETONADOR (carpeta GUI "Pick", uno por heroe) se apaga, CREA el heroe
+//        real para el jugador en su Start Location, borra el Wisp/Alma y los
+//        maniquis sobrantes, selecciona y enfoca camara al heroe nuevo, y
+//        REGISTRA el heroe en la IA con custom scripts (ver B1 paso [4]).
+//
+//   ESTRUCTURA EXACTA del detonador (espejo del Pick_01_Guardian_del_Bosque):
+//     Evento:      unidad entra a Reg_Sel_<Heroe>
+//     Condicion:   (tipo de la unidad) == Wisp  OR  == Alma Corrupta
+//     Acciones:    apagar este detonador
+//                  crear 1 <Heroe> para (Dueno) en (Start Location del dueno)
+//                  efecto especial (cosmético) + destruirlo
+//                  remover (unidad disparadora)        // borra el Wisp/Alma
+//                  remover todas las unidades de Reg_Sel_<Heroe>  // limpia maniquis
+//                  seleccionar / Pan camara al heroe creado
+//                  custom script: call IACore_RegisterGlobalHero(bj_lastCreatedUnit)
+//                  custom script: if GetPlayerController(GetOwningPlayer(bj_lastCreatedUnit)) == MAP_CONTROL_COMPUTER then
+//                  custom script:     call IACore_RegisterHero(bj_lastCreatedUnit)
+//                  custom script: endif
+//
+//   Los DOS custom scripts finales son OBLIGATORIOS:
+//     - IACore_RegisterGlobalHero: mete el heroe en el censo global que usan
+//       buffs/auras/escaneos (IACore_AllHeroes). Sin esto, auras y -as fallan.
+//     - IACore_RegisterHero (solo si el dueno es COMPUTER): arranca el bot.
+//
+//   PROTECCION DE LA ZONA (EXTRAS/Zona_Seleccion.j): el Wisp/Alma del jugador es
+//   invulnerable y NO se le puede castear nada encima (anti-troll de Botas TP),
+//   para que un AFK no quede sin heroe. No toques esto al agregar un heroe;
+//   simplemente coloca el maniqui y la region correctos.
+//
+// AL AGREGAR UN HEROE (resumen): nueva region Reg_Sel_<Heroe> + maniqui en la
+// zona correcta + un detonador Pick nuevo (duplicado y readaptado).
+//
+// LIMITACION ACTUAL Y FUTURO ("casitas"):
+//   El sistema actual depende del TAMANO del area: a mas heroes, mas apretada la
+//   vitrina y mas detonadores/regiones que mantener (hoy hay ~37-39, uno por
+//   heroe). Una alternativa futura es montar "casitas"/estructuras: una por
+//   heroe, donde el jugador simplemente selecciona la casa del heroe que quiere.
+//   Si algun dia se adopta ese sistema, habria que ELIMINAR todos los detonadores
+//   Pick + regiones actuales y reemplazarlos por la logica de casitas (que de
+//   todos modos debera terminar llamando a los MISMOS custom scripts de registro
+//   IACore_RegisterGlobalHero / IACore_RegisterHero). Mientras no se decida, el
+//   sistema Wisp/Alma + detonadores es el oficial.
+
+
+// ----------------------------------------------------------------------------
+// C3. MODO ALEATORIO DE HEROES (LA RULETA) - Core_Indice_Heroes.j
+// ----------------------------------------------------------------------------
+// La ruleta del All Random sortea SOLO entre los heroes que esten en estos arrays:
+//     udg_Array_Heroes_Humanos[1..N]  +  udg_Config_Total_Heroes[1] = N
+//     udg_Array_Heroes_Orcos[1..M]    +  udg_Config_Total_Heroes[2] = M
+//
+// Core_Logica_Random.j elige GetRandomInt(1, Total) y crea ese heroe; tras
+// repartirlo lo intercambia con el ultimo y baja el total (sin repeticiones).
+//
+// REGLA DE ORO: cada heroe del pool DEBE estar aqui Y su total debe cuadrar con
+// la cantidad real de entradas. Si agregas un heroe y olvidas subir el total, no
+// saldra nunca. Si subes el total sin agregar la entrada, la ruleta lee una
+// casilla vacia -> heroe basura.
+//
+// CONSISTENCIA CON IA_Data: idealmente, TODO heroe de esta ruleta tambien tiene
+// su bloque en IA_Data.j (C5). Si un heroe esta en la ruleta pero NO en IA_Data,
+// al randomearlo los bots y el -as caen a valores por defecto. Antes de cerrar un
+// heroe nuevo, confirma que aparezca en AMBOS sitios.
+// (Nota de auditoria: revisa periodicamente que las dos listas no se desfasen;
+//  en el pasado han existido rawcodes en la ruleta sin contraparte en IA_Data.)
+
+
+// ----------------------------------------------------------------------------
+// C4. MODO ALEATORIO DE HABILIDADES - Modo_Aleatorio_DB.j
+// ----------------------------------------------------------------------------
+// Catalogo de TODAS las habilidades de heroe agrupadas por columna del card de
+// comandos. El sorteo intercambia una habilidad SOLO con otra de su misma columna:
+//     SLOT_Q = 0 (tecla Q)   SLOT_W = 1 (W)   SLOT_E = 2 (E)   SLOT_R = 3 (ulti)
+//
+// REGISTRAR:   call RegisterAbil('A0XY', SLOT_Q)
+// RESTRINGIR:  call TagFaction('A0XY', 1)   // 1 = solo Humanos (slots 0-4)
+//              call TagFaction('A0XY', 2)   // 2 = solo Orcos (slots 5-9)
+//              call TagRanged('A0XY')       // solo heroes de rango la reciben
+//
+// El validador IsAbilValid garantiza: unicidad global (1 dueno por habilidad),
+// faccion correcta, restriccion de rango, y que el heroe no la tenga ya.
+//
+// HABILIDAD FIJA: 'A023' (Entrenamiento) la lleva TODO heroe y NO va en Q/W/E/R.
+//
+// QUE NO REGISTRAR AQUI: las habilidades de TRANSFORMACION (Metamorfosis, Robo
+// Goblin, Furia Quimica, Sed de Sangre, Soy Huskar...) van comentadas con
+// [DESACTIVADA: transformacion]. No las metas al sorteo.
+//
+// IMPORTANTE: que una habilidad este aqui NO implica que tenga datos en
+// IA_Data_Buffs (C6). Un stun simple va aqui pero NO en la calculadora de AS:
+// eso es correcto. Este archivo responde "DONDE va la habilidad"; IA_Data_Buffs
+// responde "CUANTO modifica la AS". Son independientes.
+
+
+// ----------------------------------------------------------------------------
+// C5. IA_Data.j  -  STATS DE HEROE (alimenta a los BOTS y al comando -as)
+// ----------------------------------------------------------------------------
+// Para CADA heroe registra TRES llamadas (al final del archivo, OnInit):
+//
+//   RegisterHeroStats('Xxxx', armorBase, dmgBase, dados, caras, rango, ATTR_x, esMelee)
+//     - armorBase  = Combate > Defensa Base
+//     - dmgBase    = "Dano Base" ; dados = Cantidad de Dados (ua1d) ; caras = Caras (ua1s)
+//                    (el sistema calcula Atributo + base + promedio de dados solo)
+//     - rango      = Combate > Ataque 1 > Alcance (NO "Adquisicion de alcance")
+//     - ATTR_x     = ATTR_STR / ATTR_AGI / ATTR_INT (atributo principal)
+//     - esMelee    = true (cuerpo a cuerpo) / false (rango)
+//
+//   RegisterHeroAttributes('Xxxx', Fue, Agi, Int, +Fue, +Agi, +Int)
+//     - bases + ganancia por nivel de cada atributo.
+//
+//   RegisterHeroDynamics('Xxxx', dmgPoint, ASbase, projSpeed, moveSpeed, castPoint, castBackswing)
+//     - dmgPoint   = Punto de Dano (udp1)
+//     - ASbase     = Base Cooldown / "Tiempo muerto" (ua1c)  <-- EL dato clave de -as
+//     - projSpeed  = Velocidad de Proyectil (ua1z ; 0 si es melee)
+//     - moveSpeed  = Velocidad de Movimiento (umvs)
+//     - castPoint  = Cast Point (ucpt) ; castBackswing = Cast Backswing (ucbs)
+//
+// REGLA RAPIDA (mod de velocidad base): "la AS base es el 2do dato de la 3ra
+// fila" = el 2do parametro de RegisterHeroDynamics.
+//
+// PELIGROSIDAD TACTICA (opcional, solo EXCEPCIONES):
+//   call RegisterHeroDanger('Xxxx', 1.x)   // default no listado = 1.0 (neutro)
+//   >1.0 = el bot guarda mas distancia / lo persigue menos (CC, burst oculto).
+//   <1.0 = farmeable, el bot se acerca mas.
+//   RUBRICA (ver comentarios del archivo): +0.5/0.6 por CC que habilita el focus
+//   o niega el escape (dormir/hex/atrapar/stun largo); +0.2/0.3 CC medio o CC en
+//   area a distancia; +0.1/0.2 invocacion bloqueadora o ejecucion oculta a los
+//   stats; -0.2/0.3 soporte sin amenaza solo. NO sumes por "pega fuerte" ni restes
+//   por "es fragil": eso ya lo miden los stats de arriba. danger es SOLO para lo
+//   que los stats NO ven.
+//
+// FALLBACK: si un heroe no esta registrado, GetHero* retorna constantes
+// DEFAULT_* (rango melee/rango por tipo, cooldown 0.60, etc.). Funciona, pero los
+// bots y el -as mienten. Registra siempre.
+
+
+// ----------------------------------------------------------------------------
+// C6. VELOCIDAD DE ATAQUE (-as) - IA_Data_Buffs.j / IA_Data_Items.j
+// ----------------------------------------------------------------------------
+// WC3 no muestra la velocidad de disparo. El sistema la calcula sumando 6
+// categorias (A-F) y la expone con el comando -as (EXTRAS/Comando_AS.j, que lee
+// las MISMAS funciones que la IA, asi que basta sincronizar las bases de datos).
+//
+// CASO A: cambiaste la AS BASE de un heroe (Tiempo muerto / ua1c)
+//   -> IA_Data.j, RegisterHeroDynamics, 2do parametro (ASbase). (C5)
+//
+// CASO B: cambiaste/creaste una FUENTE de AS (buff de item, aura, habilidad)
+//   -> IA_Data_Buffs.j. Tiene dos secciones:
+//      SECCION 1 (valores fijos): buffs cuyo bono de AS es igual en todos los
+//        niveles, y los items (los items no tienen niveles). Patron:
+//          call SaveReal(buffDb, 'Bxxx', BUFF_FIELD_AS_MOD, -0.25)
+//          call RegisterASBuff('Bxxx')
+//      SECCION 2 (escalado por nivel): habilidades cuyo bono cambia por nivel.
+//        Cuatro plantillas (la cabecera del archivo las repite):
+//          Aura propia:    RegisterASAura('Axxx','Bxxx') + SaveReal niveles
+//                          + OBLIGATORIO ABIL_AOE_LVL_BASE (rango del aura).
+//          Self-buff:      RegisterASSelf('Axxx','Bxxx') + SaveReal niveles.
+//          Escalado (Cat4):RegisterScaledEffect('Bxxx','Axxx',tipo,ABIL_AS_LVL_BASE,bando)
+//                          + SaveReal niveles ; si el tipo es DEBUFF_TYPE_AOE
+//                          (instantaneo no-target) DEBES registrar tambien
+//                          ABIL_AOE_LVL_BASE (el interceptor lo necesita).
+//   -> El item, ademas, va en IA_Data_Items.j (su buff, su AS, sus tags). (B5)
+//
+// SI LA HABILIDAD/ITEM NO TOCA LA AS: no la registres en IA_Data_Buffs. Que falte
+// es lo correcto: este archivo lista SOLO fuentes de velocidad de ataque.
+
+
+// ----------------------------------------------------------------------------
+// C7. AREAS DE EFECTO: ANILLOS VISUALES + ASISTENCIAS
+// ----------------------------------------------------------------------------
+// Cambiar el AoE en el Object Editor NO basta: hasta DOS sistemas dependen de ese
+// valor. Revisa ambos.
+//
+// (1) ANILLO VISUAL  ->  EXTRAS/Animacion_AoE.j
+//   Dibuja un anillo (de relampagos) que delimita el area, SOLO para habilidades
+//   que de otro modo no tendrian indicador. Como saber si tu habilidad lo usa:
+//   usala en el juego; si aparece un anillo, esta registrada aqui y debes
+//   sincronizar sus numeros. Para AGREGAR un anillo nuevo (7 pasos):
+//     1. IsRegistered(): agrega  or id == 'A0XY'
+//     2. GetRingMode(): FOLLOW_CASTER (sigue al heroe) / STATIC_TARGET (fijo donde
+//        apuntaste) / STATIC_CASTER (fijo donde estaba el heroe).
+//     3. GetRingLightningType(): tipo de rayo (LEAS, SPLK, ...).
+//     4. GetRingSegments(): suavidad del circulo (18-42).
+//     5. GetRingAoE(id, nivel): el AREA por nivel -> DEBE coincidir con el editor.
+//     6. GetRingDuration(id, nivel): la duracion por nivel.
+//     7. Opcional: IsChanneled() si se interrumpe con stun ; IsToggle()+GetToggleBuff()
+//        si es activable/desactivable (ej. Inmolacion).
+//   Si la habilidad NO es de area, o YA tiene indicador propio: ignora este paso.
+//
+// (2) ASISTENCIAS  ->  EXTRAS/tabla.j
+//   Una asistencia se otorga a quien "participo" en una kill dentro de una
+//   ventana de ~10s. El sistema reconoce esa participacion por TRES VIAS.
+//   Identificar a cual pertenece tu habilidad te dice EXACTAMENTE donde
+//   registrarla (o si no hay que hacer nada). Las tres entradas son:
+//
+//   VIA 1 - DANO  (AUTOMATICA: no se registra nada)
+//     Todo dano real (auto-ataque, proyectil, hechizo que quita vida) lo capta
+//     solo el sensor de dano. Para contar como asistencia, el dano acumulado del
+//     jugador a esa victima debe superar un UMBRAL (5% de su vida maxima) dentro
+//     de la ventana. Una habilidad que hace dano "de verdad" YA funciona por aqui:
+//     NO toques tabla.j.
+//
+//   VIA 2 - CONTROL  (CC determinante con POCO o NINGUN dano)  <<< LA QUE SE REGISTRA
+//     Un stun, un hex, un silencio, un slow fuerte, el GANCHO del Butcher... son
+//     DECISIVOS para una kill aunque NO quiten vida (o quiten muy poca). Justo por
+//     eso NUNCA superarian el umbral de la Via 1, y sin registrarlos su autor se
+//     queda sin asistencia injustamente. La Via 2 NO exige umbral de dano: basta
+//     haber aplicado el control sobre el enemigo dentro de la ventana. Donde
+//     registrar segun COMO entrega el efecto la habilidad:
+//       - TARGET unitario (clic sobre el enemigo):
+//           MB_IsControlSpell        -> agrega  or spellId == 'A0XY'
+//       - AREA tipo CIRCULO (punto objetivo o instantanea centrada en el caster):
+//           MB_AoEControlRadius      -> agrega el radio por nivel
+//       - AREA tipo LINEA (recorre recto: Empalar, Carne de Carnicero):
+//           MB_AoEIsLine + MB_AoELineDist (largo) y el ANCHO en MB_AoEControlRadius
+//       - AoE con RETARDO o PERIODICA (cae ~1s despues / golpea en rafagas:
+//         Infernal, Cohetes de Dispersion):
+//           MB_OnAoEDelayed          -> programa enums diferidos. Guarda el PID
+//                                       del caster (no la unidad), para sobrevivir
+//                                       si el caster muere antes del impacto.
+//
+//   VIA 3 - CURACION  (apoyo: curaste al que consigue la kill)
+//     Si curaste al asesino dentro de la ventana, recibes asistencia. Registrar
+//     segun como entrega la cura:
+//       - TARGET unitario (clic sobre el aliado):  MB_IsHealSpell -> or spellId == 'A0XY'
+//       - AREA (sin target: Pulverizador, Tranquilidad): MB_AoEHealRadius (radio por nivel)
+//     (Ojo: una cura AoE sin target NO se puede registrar como MB_IsHealSpell,
+//      porque GetSpellTargetUnit() devuelve null; va SIEMPRE por MB_AoEHealRadius.)
+//
+//   REGLA PRACTICA (pregunta una sola cosa: "¿como mata o ayuda a matar?"):
+//     - Hace dano suficiente para matar/casi  -> Via 1: no haces nada.
+//     - Es CC/utilidad DETERMINANTE con poco o cero dano (stun/hex/gancho/silencio)
+//                                              -> Via 2: REGISTRALA (si no, no da asistencia).
+//     - Cura a aliados                         -> Via 3: registrala.
+//   Los radios AoE deben COINCIDIR (o ser un poco generosos) con el dato del
+//   editor. Si la habilidad ya estaba registrada y le cambiaste el area, corrige
+//   el radio en su funcion correspondiente.
+
+
+// ----------------------------------------------------------------------------
+// C8. HABILIDADES COMPLEJAS DETONADAS - carpeta CUSTOM_SKILLS
+// ----------------------------------------------------------------------------
+// A veces buscas un dato en el Object Editor y NO existe (ej. el % de vida que
+// quita Quebrantavidas, A040). Eso significa que la habilidad esta "detonada":
+// programada a mano en vJASS porque el motor base no soporta su efecto.
+//   1. Ve a la carpeta CUSTOM_SKILLS.
+//   2. Busca el archivo con el nombre de la habilidad (Gancho_de_Carnicero.j,
+//      Torbellino de Cuchillas.j, Quebrantavidas.j, Fisure.j,
+//      Habilidad_Techies_Barril.j).
+//   3. Su CABECERA explica que valores cambiar y donde. Edita AHI, no el editor.
+//
+// TIP: las duraciones de estados se aplican igual a heroes y a unidades normales,
+// salvo que el detonador diga explicitamente lo contrario.
+
+
+// ----------------------------------------------------------------------------
+// C9. TOOLTIPS Y NUMEROS DECIMALES
+// ----------------------------------------------------------------------------
+// El jugador confia en el tooltip. Mucho texto usa referencias dinamicas
+// (<A000,DataA1>) que se actualizan solas al cambiar el dato. PERO: cuando un
+// numero esta escrito "en bruto" (decimales forzados, datos que el editor no deja
+// referenciar), estas OBLIGADO a actualizar el tooltip a mano EN LOS 10 NIVELES.
+// Un tooltip que dice 30% cuando la habilidad quita 50% se siente como un bug.
+
+
+// ----------------------------------------------------------------------------
+// C10. CAMPOS BLOQUEADOS Y EL PELIGRO DE "UMSWE"
+// ----------------------------------------------------------------------------
+// Si un dato no esta en el Object Editor NI en CUSTOM_SKILLS: NO lo fuerces.
+// El editor NewGen tiene una opcion (UMSWE) que desbloquea campos ocultos.
+// DECISION DE DISENO: este mapa se construyo SIN tocar ningun dato oculto.
+// NUNCA actives UMSWE: puede corromper el mapa o generar conflictos
+// irreparables. Si el dato existe y se usa, ya esta accesible de forma segura
+// por los metodos de arriba.
+
+
+// ----------------------------------------------------------------------------
+// C11. COMANDOS DEL JUEGO
+// ----------------------------------------------------------------------------
+// La mayoria de los comandos de jugador viven cada uno en su archivo dentro de
+// EXTRAS (ej. -as en Comando_AS.j, zoom en Zoom.j, economia en
+// Comandos_Economia.j, kick en Sistema_Kick.j). Para agregar/cambiar un comando
+// o sus condiciones, edita su archivo.
+// EXCEPCIONES: -MS (velocidad de movimiento) y el Matchup viven en el legacy
+// Documentacion/init.j (carpeta INIT).
+
+
+// ----------------------------------------------------------------------------
+// C12. TRANSFORMACIONES (rawcode propio)
+// ----------------------------------------------------------------------------
+// Cuando un heroe se transforma (Cazador de Demonios -> 'Edmm', Alquimista ->
+// 'Nal3', etc.) mantiene sus atributos, pero el motor CAMBIA su rango, cooldown
+// y animaciones. Por eso la forma alterna se trata casi como un heroe aparte:
+//   -> IA_Data.j: registra la FORMA con su rawcode propio (Stats + Dynamics). (C5)
+//   -> Modo_Aleatorio_DB.j: la habilidad de transformacion NO entra al sorteo
+//      (queda comentada [DESACTIVADA: transformacion]). (C4)
+//   -> Si la forma conserva CC fuerte, registrale su propio RegisterHeroDanger.
+// No necesita ruleta ni detonador Pick propios (no se elige directamente).
+
+
+
+// ############################################################################
+// PARTE D - MATRIZ DE SINCRONIZACION (LA CHULETA)
+// ############################################################################
+// "Hice un cambio X -> que archivos toco." Marca obligatorio [O] y condicional [C].
+//
+// AGREGAR UN HEROE:
+//   [O] Object Editor (unidad + 'A023' + 4 habilidades)
+//   [O] Core_Indice_Heroes.j ........ array de faccion + Config_Total_Heroes
+//   [O] IA_Data.j ................... Stats + Attributes + Dynamics (+ Danger opc.)
+//   [O] Detonador Pick GUI + region Reg_Sel_<Heroe> + maniqui (custom scripts de registro)
+//   [C] B3 por cada habilidad NUEVA del heroe
+//   [C] IA_Data.j ................... registrar tambien su forma de transformacion
+//
+// MODIFICAR STATS/AS BASE/MS/RANGO DE UN HEROE:
+//   [O] Object Editor
+//   [O] IA_Data.j (bloque del heroe)
+//
+// AGREGAR UNA HABILIDAD:
+//   [O] Object Editor (habilidad + buff)
+//   [O] Modo_Aleatorio_DB.j ......... RegisterAbil (+ TagFaction/TagRanged) salvo transformaciones
+//   [C] IA_Data_Buffs.j ............. SOLO si modifica velocidad de ataque
+//   [C] Animacion_AoE.j ............. SOLO si es area sin indicador visual propio
+//   [C] tabla.j .................... SOLO si da control/cura/AoE para asistencias
+//   [C] CUSTOM_SKILLS/ ............. SOLO si el efecto no existe en el editor
+//   [C] Tooltip manual ............. SOLO si hay numeros "en bruto"
+//
+// MODIFICAR AS (%/duracion) DE UNA HABILIDAD O ITEM:
+//   [O] Object Editor
+//   [O] IA_Data_Buffs.j (valor por nivel)   [+ IA_Data_Items.j si es item]
+//
+// MODIFICAR AREA DE EFECTO (AoE) DE UNA HABILIDAD:
+//   [O] Object Editor
+//   [C] Animacion_AoE.j (GetRingAoE) si tiene anillo
+//   [C] tabla.j (MB_AoE*Radius) si esta registrada para asistencias
+//
+// REEMPLAZAR HABILIDAD POR COPIA CON NUEVO RAWCODE:
+//   [O] Cambiar el ID viejo -> nuevo en Modo_Aleatorio_DB.j
+//   [C] Y en cualquier otro sistema que lo liste (AS, anillos, asistencias, CUSTOM_SKILLS)
+//
+// AGREGAR/MODIFICAR ITEM:
+//   [O] Object Editor
+//   [O] IA_Data_Items.j (propiedades + tags)
+//   [C] IA_Data_Buffs.j si da AS ; COMBINACION_OBJETOS/ si es receta/fusion
+//
+// REGLA TRANSVERSAL: los sistemas de "solo excepciones" (IA_Data_Buffs,
+// Animacion_AoE, tabla asistencias, RegisterHeroDanger) NO necesitan conocer todo;
+// que falte una entrada ahi suele ser correcto. Los sistemas "censo total"
+// (Core_Indice_Heroes, IA_Data, detonadores Pick) SI deben conocer a cada heroe;
+// ahi una ausencia ES el bug.
+
+
+
+// ############################################################################
+// PARTE E - [ESPACIO RESERVADO]
+// ############################################################################
+// Dejar abierto para futuras mecanicas que requieran sincronizacion en versiones
+// 1.X / 2.0 (p.ej. el sistema de "casitas" de seleccion si reemplaza al de
+// Wisp/Alma; nuevas categorias de la calculadora; etc.).
+// ============================================================================
