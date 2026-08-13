@@ -61,14 +61,60 @@ function AB_Capture takes group g, integer uid, real x, real y, boolean protect 
     set u = null
 endfunction
 
-// Callback: remueve proteccion y restaura color original
+// Remueve proteccion de una sola estructura y restaura su color original.
+function AB_UnlockUnit takes unit u returns nothing
+    if u != null then
+        call SetUnitInvulnerable(u, false)
+        call SetUnitVertexColor(u, 255, 255, 255, 255)
+    endif
+endfunction
+
+// Callback de grupo: remueve proteccion y restaura color original.
 function AB_RemoveProtection takes nothing returns nothing
-    call SetUnitInvulnerable(GetEnumUnit(), false)
-    call SetUnitVertexColor(GetEnumUnit(), 255, 255, 255, 255)
+    call AB_UnlockUnit(GetEnumUnit())
 endfunction
 
 function AB_UnlockGroup takes group g returns nothing
     call ForGroup(g, function AB_RemoveProtection)
+endfunction
+
+// Las creeperas de F2 estan enlazadas por carril y posicion vertical.
+// Al morir una, solo su equivalente enemiga se vuelve vulnerable.
+// La equivalente permanece dentro de su grupo F2: no abre la fase ni
+// deja de ser requisito para desbloquear F1 mientras siga con vida.
+function AB_UnlockPairedCreepera takes unit dying returns nothing
+    local unit paired = null
+
+    // Norte, arriba: Humana hbar <-> Orca usep
+    if dying == udg_unit23 then
+        set paired = udg_unit27
+    elseif dying == udg_unit27 then
+        set paired = udg_unit23
+
+    // Norte, abajo: Humana edob <-> Orca otto
+    elseif dying == udg_unit22 then
+        set paired = udg_unit28
+    elseif dying == udg_unit28 then
+        set paired = udg_unit22
+
+    // Sur, manada: Humana eaom (arriba) <-> Orca obar (abajo)
+    elseif dying == udg_unit21 then
+        set paired = udg_unit25
+    elseif dying == udg_unit25 then
+        set paired = udg_unit21
+
+    // Sur, tanque: Humana hbla (abajo) <-> Orca uslh (arriba)
+    elseif dying == udg_unit20 then
+        set paired = udg_unit26
+    elseif dying == udg_unit26 then
+        set paired = udg_unit20
+    endif
+
+    if paired != null and GetWidgetLife(paired) > 0.405 then
+        call AB_UnlockUnit(paired)
+    endif
+
+    set paired = null
 endfunction
 
 function AB_IsGroupDead takes group g returns boolean
@@ -148,6 +194,10 @@ endfunction
 
 function AB_OnStructureDeath takes nothing returns nothing
     local unit dying = GetDyingUnit()
+
+    // Excepcion de creeperas: vulnerabilidad individual y simetrica.
+    // No modifica grupos ni booleanos de apertura de fase.
+    call AB_UnlockPairedCreepera(dying)
 
     // ========== HUMANOS: Fase 3 Top ==========
     if IsUnitInGroup(dying, AB_HUM_F3_TOP) then

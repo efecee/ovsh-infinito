@@ -17,7 +17,7 @@ function Trig_Soy_Actions takes nothing returns nothing
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "|cffFFCC00════════════════════════════════════════════|r")
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "         |cff00FF00Orcos vs Humanos Infinito 1.7|r")
+        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "         |cff00FF00Orcos vs Humanos Infinito 1.8|r")
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "   |cffAAAAAAEl editor de esta version esta en la sala.|r")
         call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")

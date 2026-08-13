@@ -2680,7 +2680,8 @@ function main2 takes nothing returns nothing
 	local weathereffect we
 	call SetCameraBounds(-6656.0+GetCameraMargin(CAMERA_MARGIN_LEFT),-3584.0+GetCameraMargin(CAMERA_MARGIN_BOTTOM),6656.0-GetCameraMargin(CAMERA_MARGIN_RIGHT),3072.0-GetCameraMargin(CAMERA_MARGIN_TOP),-6656.0+GetCameraMargin(CAMERA_MARGIN_LEFT),3072.0-GetCameraMargin(CAMERA_MARGIN_TOP),6656.0-GetCameraMargin(CAMERA_MARGIN_RIGHT),-3584.0+GetCameraMargin(CAMERA_MARGIN_BOTTOM))
 	call SetDayNightModels("Environment\\DNC\\DNCAshenvale\\DNCAshenvaleTerrain\\DNCAshenvaleTerrain.mdl","Environment\\DNC\\DNCAshenvale\\DNCAshenvaleUnit\\DNCAshenvaleUnit.mdl")
-	call SetTerrainFogEx(0,1900.0,2900.0,0.500,0.502,0.502,0.502)
+	// Niebla de terreno controlada desde Escenario > Opciones del mapa.
+	// call SetTerrainFogEx(0,1900.0,2900.0,0.500,0.502,0.502,0.502)
 	call SetWaterBaseColor(255,0,0,255)
 	set we=AddWeatherEffect(Rect(-8192.0,-4096.0,8192.0,4096.0),'RAhr')
 	call EnableWeatherEffect(we,true)
@@ -3196,7 +3197,8 @@ function main3 takes nothing returns nothing
 	local weathereffect we
 	call SetCameraBounds(-6528.0+GetCameraMargin(CAMERA_MARGIN_LEFT),-3328.0+GetCameraMargin(CAMERA_MARGIN_BOTTOM),6528.0-GetCameraMargin(CAMERA_MARGIN_RIGHT),2816.0-GetCameraMargin(CAMERA_MARGIN_TOP),-6528.0+GetCameraMargin(CAMERA_MARGIN_LEFT),2816.0-GetCameraMargin(CAMERA_MARGIN_TOP),6528.0-GetCameraMargin(CAMERA_MARGIN_RIGHT),-3328.0+GetCameraMargin(CAMERA_MARGIN_BOTTOM))
 	call SetDayNightModels("Environment\\DNC\\DNCAshenvale\\DNCAshenvaleTerrain\\DNCAshenvaleTerrain.mdl","Environment\\DNC\\DNCAshenvale\\DNCAshenvaleUnit\\DNCAshenvaleUnit.mdl")
-	call SetTerrainFogEx(0,1900.0,2900.0,0.500,0.502,0.502,0.502)
+	// Niebla de terreno controlada desde Escenario > Opciones del mapa.
+	// call SetTerrainFogEx(0,1900.0,2900.0,0.500,0.502,0.502,0.502)
 	call SetWaterBaseColor(255,0,0,255)
 	set we=AddWeatherEffect(Rect(-8192.0,-4096.0,8192.0,4096.0),'RAhr')
 	call EnableWeatherEffect(we,true)

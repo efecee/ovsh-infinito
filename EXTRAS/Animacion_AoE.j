@@ -132,7 +132,7 @@ scope AnimacionAoE initializer Init
     // --- PASO 1: Registrar la habilidad ---
     // Agrega el raw code de tu habilidad con:  or id == 'XXXX'
     private function IsRegistered takes integer id returns boolean
-        return id == 'AOww' or id == 'A046' or id == 'AOfs' or id == 'AEfk' or id == 'AHtc' or id == 'A00F' or id == 'AEsf' or id == 'AEtq' or id == 'AOws' or id == 'AOvd' or id == 'AUan' or id == 'AUls' or id == 'ANht' or id == 'AEim' or id == 'A03O' or id == 'A04L' or id == 'A03C' or id == 'AItb'
+        return id == 'AOww' or id == 'A046' or id == 'AOfs' or id == 'AEfk' or id == 'AHtc' or id == 'A00F' or id == 'AEsf' or id == 'AEtq' or id == 'AOws' or id == 'Awrs' or id == 'AOvd' or id == 'AUan' or id == 'AUls' or id == 'ANht' or id == 'AEim' or id == 'A03O' or id == 'A04L' or id == 'A03C' or id == 'AItb'
     endfunction
 
     // --- PASO 7 (opcional): Marcar como canalizada ---
@@ -168,7 +168,7 @@ scope AnimacionAoE initializer Init
         elseif (id == 'AOfs') or (id == 'A046') then
             return RING_STATIC_TARGET
             // Abanico / Trueno / Grito / Detector (objeto AItb): instantánea, centrada en el héroe
-        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
+        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'Awrs') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
             return RING_STATIC_CASTER
         endif
         return RING_FOLLOW_CASTER
@@ -176,7 +176,7 @@ scope AnimacionAoE initializer Init
 
     // --- PASO 3: Tipo de relámpago ---
     private function GetRingLightningType takes integer id returns string
-        if (id == 'AOww') or (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOws') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'AEim') or (id == 'A03O') or (id == 'A04L') or (id == 'A03C') then
+        if (id == 'AOww') or (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'AEim') or (id == 'A03O') or (id == 'A04L') or (id == 'A03C') then
             return "LEAS"
         elseif (id == 'AOfs') or (id == 'A046') then
             return "SPLK"
@@ -192,7 +192,7 @@ scope AnimacionAoE initializer Init
     private function GetRingSegments takes integer id returns integer
         if (id == 'AOww') or (id == 'AEim') or (id == 'A03O') then
             return 18
-        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEtq') or (id == 'AEsf') or (id == 'AOws') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') then
+        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEtq') or (id == 'AEsf') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') then
             return 24
         elseif (id == 'AOfs') or (id == 'A046') or (id == 'AItb') then
             return 42
@@ -327,6 +327,9 @@ scope AnimacionAoE initializer Init
             // ========== PISOTÓN (AOws) — 300 fijo ==========
         elseif (id == 'AOws') then
             return 300.0
+            // ========== PISOTÓN GUARDIAN DEL APOCALIPSIS (Awrs) — 250 fijo, sin niveles ==========
+        elseif (id == 'Awrs') then
+            return 250.0
             // ========== ANIMAR A LOS MUERTOS (AUan) — 900 fijo ==========
         elseif (id == 'AUan') then
             return 900.0
@@ -397,27 +400,27 @@ scope AnimacionAoE initializer Init
             // ========== AULLIDO DE TERROR (ANht) — 10 niveles ==========
         elseif (id == 'ANht') then
             if (level == 1) then
-                return 500.0
+                return 600.0
             elseif (level == 2) then
-                return 545.0
+                return 645.0
             elseif (level == 3) then
-                return 590.0
+                return 690.0
             elseif (level == 4) then
-                return 635.0
+                return 735.0
             elseif (level == 5) then
-                return 680.0
+                return 780.0
             elseif (level == 6) then
-                return 725.0
+                return 825.0
             elseif (level == 7) then
-                return 770.0
+                return 870.0
             elseif (level == 8) then
-                return 815.0
+                return 915.0
             elseif (level == 9) then
-                return 860.0
+                return 960.0
             elseif (level == 10) then
-                return 905.0
+                return 1000.0
             endif
-            return 500.0
+            return 600.0
             // ========== ESTRELLA FUGAZ (AEsf) — 900 fijo ==========
         elseif (id == 'AEsf') then
             return 900.0
@@ -520,7 +523,7 @@ scope AnimacionAoE initializer Init
             endif
             return 8.0
             // ====== ABANICO / TRUENO / GRITO / DETECTOR (objeto AItb) — 1s fijo ======
-        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
+        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'Awrs') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
             return 1.0
             // ========== ESTRELLA FUGAZ (AEsf) — 6 niveles ==========
         elseif (id == 'AEsf') then

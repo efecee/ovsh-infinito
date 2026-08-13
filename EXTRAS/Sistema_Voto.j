@@ -2,7 +2,12 @@
 // SISTEMA DE VOTACIÓN DEMOCRÁTICA POR ABANDONO
 //===========================================================================
 // Cuando un jugador abandona o es kickeado, este sistema pausa la acción
-// y abre una votación para que los jugadores restantes decidan:
+// y abre una votación de 8 segundos para que los jugadores restantes decidan.
+// El equipo afectado recibe BOT/DROP/RMK y el rival CONTINUAR/RMK:
+//   CONTINUAR/BOT/DROP cuentan juntos contra RMK (todos los votos pesan 1).
+//   Si un equipo vota unánimemente RMK entre quienes participaron, fuerza RMK.
+//   Si no gana RMK, solo el equipo afectado decide BOT contra DROP.
+//   Una salida posterior del equipo rival recibe DROP por defecto.
 //   BOT  ? La IA toma control del héroe
 //   DROP ? Items a la base, héroe eliminado (default si nadie vota).
 //          Su oro ACTUAL pasa COMPLETO a sus aliados (HUMANOS y BOTS por
@@ -40,6 +45,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         private constant integer VOTE_BOT  = 1
         private constant integer VOTE_DROP = 2
         private constant integer VOTE_RMK  = 3
+        private constant integer VOTE_CONTINUE = 4
 
         // Separador de resultados (estilo comando AS: línea dorada de "=").
         // Envuelve el bloque "Resultado / explicación" arriba y abajo.
@@ -73,7 +79,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Fase de configuración del Master (Oro/Héroes/Habilidades).
         // Mientras sea false, las votaciones se DIFIEREN: WC3 solo permite
         // UN Dialog visible por jugador, y el menú del Master (1.00s) pisaría
-        // el Dialog del voto dejándolo sin poder votar (bloqueo de 15s).
+        // el Dialog del voto dejándolo sin poder votar (bloqueo de 8s).
         // MenuHabilidades llama OnMenusFinished() al terminar la configuración.
         private boolean Voto_MenusDone = false
         // ¿Hay desertores esperando la apertura diferida de la votación?
@@ -96,21 +102,31 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Timer periódico que congela unidades nuevas (creeps de spawners)
         private timer Voto_TimerFreeze = null
 
-        // --- UI (Dialog) ---
-        private dialog Voto_Dialog   = null
-        private button Voto_BtnBot   = null
-        private button Voto_BtnDrop  = null
-        private button Voto_BtnRmk   = null
+        // --- UI (Dialogs por equipo) ---
+        // El equipo afectado decide BOT/DROP/RMK; el rival CONTINUAR/RMK.
+        // Si no hay héroe, ambos equipos reciben CONTINUAR/RMK.
+        private dialog Voto_DialogAffected = null
+        private dialog Voto_DialogOpposing = null
+        private button Voto_BtnAffectedBot      = null
+        private button Voto_BtnAffectedDrop     = null
+        private button Voto_BtnAffectedContinue = null
+        private button Voto_BtnAffectedRmk      = null
+        private button Voto_BtnOpposingContinue = null
+        private button Voto_BtnOpposingRmk      = null
 
         // --- Votos ---
         private integer array Voto_Votos       // [playerId] = VOTE_*
-        private integer array Voto_Orden       // [playerId] = orden de votación (1,2,3...)
-        private integer       Voto_OrdenCount  = 0
         private integer       Voto_Emitidos    = 0
         private integer       Voto_Validos     = 0  // votantes válidos
         
         // Caso 1 vs Caso 2: ¿algún desertor tiene héroe?
         private boolean       Voto_AnyHeroDesertor = false
+        // Equipo del primer abandono que abrió este ciclo de votación.
+        // Se fija al registrar al primer desertor y no cambia si sale alguien más.
+        private boolean       Voto_AffectedIsHuman = false
+        // El primer desertor tenía héroe: habilita BOT/DROP para su equipo.
+        // Las salidas posteriores nunca cambian los Dialogs de la encuesta.
+        private boolean       Voto_PrimaryHasHero = false
 
         // --- Aviso central "Votación en curso" ---
         // Un texttag por slot (se crea perezosamente y se REUSA entre ciclos,
@@ -161,13 +177,11 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         if (vote == VOTE_BOT) then
             return "|cff00CCFFBOT|r"
         elseif (vote == VOTE_DROP) then
-            if (Voto_AnyHeroDesertor) then
-                return "|cffFFCC00DROP|r"
-            else
-                return "|cffFFCC00KICK|r"
-            endif
+            return "|cffFFCC00DROP|r"
         elseif (vote == VOTE_RMK) then
             return "|cffFF4444RMK|r"
+        elseif (vote == VOTE_CONTINUE) then
+            return "|cff55DD55CONTINUAR|r"
         endif
         return "???"
     endfunction
@@ -210,23 +224,8 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     endfunction
 
     // ==========================================================
-    // EQUIPO: helpers para voto ponderado y reparto de oro
+    // EQUIPO: helpers para reparto de oro
     // ==========================================================
-    // Equipo del PRIMER desertor por slot (0-4 Humanos = true / 5-9 Orcos =
-    // false; misma convención que Eco_TeamIndex en Comandos_Economia.j). Si no
-    // hubiera ninguno (no debería pasar en una resolución real), default true.
-    private function Voto_DesertorIsHuman takes nothing returns boolean
-        local integer i = 0
-        loop
-            exitwhen i > 9
-            if (Voto_Desertores[i]) then
-                return (i <= 4)
-            endif
-            set i = i + 1
-        endloop
-        return true
-    endfunction
-
     // ¿Puede 'pid' heredar del equipo indicado? (ALIADO ACTIVO del equipo por
     // slot, que no sea desertor pendiente ni expulsado por una encuesta
     // anterior). Cuenta tanto el HUMANO (controller USER) como el BOT
@@ -292,15 +291,16 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         call Voto_BannerTeardown()
         set Voto_State = 0
         set Voto_NumDesertores = 0
-        set Voto_OrdenCount = 0
         set Voto_Emitidos = 0
         set Voto_Validos = 0
+        set Voto_AnyHeroDesertor = false
+        set Voto_AffectedIsHuman = false
+        set Voto_PrimaryHasHero = false
         loop
             exitwhen i > 9
             set Voto_Desertores[i] = false
             set Voto_HeroRef[i] = null
             set Voto_Votos[i] = VOTE_NONE
-            set Voto_Orden[i] = 0
             set i = i + 1
         endloop
         // Limpiar grupo de congelamiento (por si quedó algo)
@@ -431,11 +431,11 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
             set lineP = "Faltan |cffFFCC00" + I2S(pending) + "|r jugadores por votar"
         endif
         if (secs == 1) then
-            set lineS = "|cffAAAAAASe cierra sola en |cffFFCC001|cffAAAAAA segundo|r"
+            set lineS = "|cffAAAAAACierre automático en |cffFFCC001|cffAAAAAAs|r"
         else
-            set lineS = "|cffAAAAAASe cierra sola en |cffFFCC00" + I2S(secs) + "|cffAAAAAA segundos|r"
+            set lineS = "|cffAAAAAACierre automático en |cffFFCC00" + I2S(secs) + "|cffAAAAAAs|r"
         endif
-        return "|cff00CCFFVOTACION EN CURSO|r" + "\n" + lineP + "\n" + lineS
+        return "|cff00CCFFVOTACIÓN EN CURSO|r" + "\n" + lineP + "\n" + lineS
     endfunction
 
     // Loop del banner (timer BANNER_UPDATE_INTERVAL). Por cada slot:
@@ -487,107 +487,168 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     endfunction
 
     // ==========================================================
-    // EJECUCIÓN: BOT — La IA toma control
+    // EJECUCIÓN DE CONTINUAR: BOT/DROP/KICK POR DESERTOR
     // ==========================================================
-    private function Voto_EjecutarBot takes nothing returns nothing
+    // BOT solo puede aplicarse a héroes del equipo del PRIMER desertor.
+    // Todo desertor posterior del equipo contrario recibe DROP. Un desertor
+    // sin héroe siempre recibe KICK, aunque BOT haya ganado para su equipo.
+
+    private function Voto_HasHeroDeserterInTeam takes boolean humanTeam returns boolean
         local integer i = 0
-        local unit hero
-        local boolean engineWasOff = not IA_System_On
-        local integer row
-        local multiboarditem mb_item
-
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Resultado: |cff00CCFFBOT|r")
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Jugador eliminado. La IA tomará el control de su Héroe.")
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
-
-        // Encender el cerebro de la IA si está apagado
-        if (engineWasOff) then
-            call IACore_InitializeBots()
-        endif
-
-        // Registrar cada héroe desertor en la IA
         loop
             exitwhen i > 9
-            if (Voto_Desertores[i]) then
-                set hero = Voto_HeroRef[i]
-                if (hero != null and GetUnitTypeId(hero) != 0) then
-                    // --- AllHeroes[] (array global para aura scan) ---
-                    // Si el motor ESTABA APAGADO: InitializeBots escaneó a todos,
-                    // pero saltó al desertor (PLAYER_SLOT_STATE_LEFT).
-                    // Necesitamos agregarlo manualmente.
-                    //
-                    // Si el motor YA ESTABA ENCENDIDO: InitializeBots ya lo
-                    // registró al inicio (cuando el jugador aún estaba conectado).
-                    // NO volver a agregarlo o habrá duplicado en AllHeroes[],
-                    // causando que GetScaledDebuffLevel procese este héroe 2 veces.
-                    if (engineWasOff) then
-                        call IACore_RegisterGlobalHero(hero)
-                    endif
-
-                    // --- BotsActive[] (motor de IA) ---
-                    // Siempre necesario: el héroe era humano, nunca tuvo Bot struct.
-                    call IACore_RegisterHero(hero)
-
-                    // Descongelar al héroe (lo pausamos al detectar abandono)
-                    call PauseUnit(hero, false)
-                endif
-
-                // --- TABLA: Restaurar fila (MB_FadeRow la atenuó antes del voto) ---
-                // Marcar como bot post-encuesta (key 102) para que Sistema_Kick
-                // permita re-expulsar sin encuesta.
-                call SaveBoolean(udg_MB_Hash, i, 101, true) // Ya procesado
-                call SaveBoolean(udg_MB_Hash, i, 102, true) // Bot post-encuesta
-                call SaveBoolean(udg_MB_Hash, i, 103, false) // Fila NO atenuada (hay un bot jugando el slot)
-
-                // Renombrar jugador globalmente: todos los GetPlayerName()
-                // ahora retornan "IA NombreOriginal" automáticamente.
-                // Esto cubre: Sistema_Anuncios, Comandos_Economia, F9, etc.
-                call SetPlayerName(Player(i), "|cFFFFCC00IA|r " + Voto_GetColor(Player(i)) + LoadStr(udg_MB_Hash, i, 5))
-
-                // Nombre en tabla: prefijo blanco IA + color del jugador + nombre
-                set row = LoadInteger(udg_MB_Hash, i, 0)
-                if (row > 0) then
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
-                    call MultiboardSetItemValue(mb_item, "|cFFFFCC00IA|r " + Voto_GetColor(Player(i)) + LoadStr(udg_MB_Hash, i, 5) + "|r")
-                    call MultiboardSetItemStyle(mb_item, true, false)
-                    call MultiboardReleaseItem(mb_item)
-
-                    // KDA: restaurar a color normal (deshacer el atenuado)
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
-                    call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, i, 1)))
-                    call MultiboardSetItemStyle(mb_item, true, false)
-                    call MultiboardReleaseItem(mb_item)
-
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
-                    call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, i, 2)))
-                    call MultiboardSetItemStyle(mb_item, true, false)
-                    call MultiboardReleaseItem(mb_item)
-
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
-                    call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, i, 4)))
-                    call MultiboardSetItemStyle(mb_item, true, false)
-                    call MultiboardReleaseItem(mb_item)
-                endif
+            if (Voto_Desertores[i] and (i <= 4) == humanTeam and Voto_HeroRef[i] != null) then
+                return true
             endif
             set i = i + 1
         endloop
+        return false
+    endfunction
+
+    private function Voto_HasNoHeroDeserter takes nothing returns boolean
+        local integer i = 0
+        loop
+            exitwhen i > 9
+            if (Voto_Desertores[i] and Voto_HeroRef[i] == null) then
+                return true
+            endif
+            set i = i + 1
+        endloop
+        return false
+    endfunction
+
+    private function Voto_IsBotTarget takes integer id returns boolean
+        if (not Voto_Desertores[id]) then
+            return false
+        endif
+        if ((id <= 4) != Voto_AffectedIsHuman) then
+            return false
+        endif
+        if (Voto_HeroRef[id] == null) then
+            return false
+        endif
+        return GetUnitTypeId(Voto_HeroRef[id]) != 0
+    endfunction
+
+    private function Voto_ShowContinueResultForPlayer takes player p, boolean isAffected, integer winner returns nothing
+        local boolean otherHasHero = Voto_HasHeroDeserterInTeam(not Voto_AffectedIsHuman)
+        local boolean anyNoHero = Voto_HasNoHeroDeserter()
+
+        call DisplayTimedTextToPlayer(p, 0, 0, 10.0, VOTO_SEP)
+
+        // Si el primer jugador salió sin héroe, ambos equipos recibieron
+        // CONTINUAR/RMK. Por eso ambos ven CONTINUAR como resultado.
+        if (not Voto_PrimaryHasHero) then
+            call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Resultado: |cff55DD55CONTINUAR|r")
+            if (Voto_AnyHeroDesertor) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Items de los desconectados a sus bases. Oro repartido.")
+            elseif (anyNoHero) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Su oro se reparte entre aliados.")
+            endif
+
+            // El equipo afectado reconoce BOT o DROP, igual que en su Dialog.
+        elseif (isAffected) then
+            if (winner == VOTE_BOT) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Resultado: |cff00CCFFBOT|r")
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "La IA controla a los desconectados de tu equipo.")
+                if (otherHasHero) then
+                    call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "El rival desconectado pierde su héroe. Items en su base, oro repartido.")
+                endif
+            else
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Resultado: |cffFFCC00DROP|r")
+                if (otherHasHero) then
+                    call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Items de los desconectados a sus bases. Oro repartido.")
+                else
+                    call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Items del desconectado a la base. Oro repartido.")
+                endif
+            endif
+            if (anyNoHero) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "También se reparte el oro de quienes salieron sin héroe.")
+            endif
+
+            // El rival solo eligió CONTINUAR/RMK: siempre ve CONTINUAR y una
+            // explicación, nunca BOT o DROP como un segundo resultado.
+        else
+            call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Resultado: |cff55DD55CONTINUAR|r")
+            if (winner == VOTE_BOT) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "La IA controla a los desconectados rivales.")
+                if (otherHasHero) then
+                    call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Tu aliado desconectado pierde su héroe. Items en tu base, oro repartido.")
+                endif
+            elseif (otherHasHero) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "Items de los desconectados a sus bases. Oro repartido.")
+            else
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "El rival pierde su héroe. Items en su base, oro repartido.")
+            endif
+            if (anyNoHero) then
+                call DisplayTimedTextToPlayer(p, 0, 0, 10.0, "También se reparte el oro de quienes salieron sin héroe.")
+            endif
+        endif
+
+        call DisplayTimedTextToPlayer(p, 0, 0, 10.0, VOTO_SEP)
+    endfunction
+
+    private function Voto_ShowContinueResult takes integer winner returns nothing
+        local integer i = 0
+        loop
+            exitwhen i > 9
+            if (Voto_IsValidVoter(i)) then
+                call Voto_ShowContinueResultForPlayer(Player(i), (i <= 4) == Voto_AffectedIsHuman, winner)
+            endif
+            set i = i + 1
+        endloop
+    endfunction
+
+    // Convierte UN desertor elegible en bot. Solo se llama con héroe válido.
+    private function Voto_ConvertOneToBot takes integer id, boolean engineWasOff returns nothing
+        local unit hero = Voto_HeroRef[id]
+        local integer row
+        local multiboarditem mb_item
+
+        // Si el motor estaba apagado, InitializeBots saltó al desertor porque
+        // su slot ya no estaba jugando. Agregar su héroe manualmente a AllHeroes.
+        if (engineWasOff) then
+            call IACore_RegisterGlobalHero(hero)
+        endif
+        call IACore_RegisterHero(hero)
+        call PauseUnit(hero, false)
+
+        // Restaurar la fila y marcar este slot como bot post-encuesta.
+        call SaveBoolean(udg_MB_Hash, id, 101, true)
+        call SaveBoolean(udg_MB_Hash, id, 102, true)
+        call SaveBoolean(udg_MB_Hash, id, 103, false)
+        call SetPlayerName(Player(id), "|cFFFFCC00IA|r " + Voto_GetColor(Player(id)) + LoadStr(udg_MB_Hash, id, 5))
+
+        set row = LoadInteger(udg_MB_Hash, id, 0)
+        if (row > 0) then
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+            call MultiboardSetItemValue(mb_item, "|cFFFFCC00IA|r " + Voto_GetColor(Player(id)) + LoadStr(udg_MB_Hash, id, 5) + "|r")
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+            call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 1)))
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+            call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 2)))
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+            call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 4)))
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+        endif
 
         set hero = null
         set mb_item = null
     endfunction
 
-    // ==========================================================
-    // EJECUCIÓN: DROP — Items a base, héroe eliminado
-    // ==========================================================
-    // Lógica inlineada de MB_DropItems (tabla.j no es library)
-    // silent = true: aplica TODO el efecto (items, oro, flags) pero sin
-    // emitir NINGÚN mensaje. Lo usa la ruta automática de F0 vulnerable
-    // (OnPlayerLeave): en el final de la partida los abandonos se resuelven
-    // en silencio para no llenar la pantalla. Las rutas de encuesta pasan
-    // false y conservan sus mensajes de siempre.
-    private function Voto_EjecutarDrop takes boolean silent returns nothing
-        local integer i = 0
+    // Aplica DROP o KICK a UN desertor. Sin héroe, el mismo flujo reparte
+    // el oro y no encuentra unidades ni items que retirar.
+    private function Voto_DropOne takes integer id, boolean silent returns nothing
         local integer slot
         local group g
         local unit u
@@ -596,130 +657,75 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         local integer locID
         local real baseX
         local real baseY
-        // Reparto de oro del desertor entre sus aliados (humanos o bots).
         local integer j
         local integer goldD
-        local integer allyCount
-        local integer share
+        local integer allyCount = 0
+        local integer share = 0
 
-        if (not silent) then
-            if (Voto_AnyHeroDesertor) then
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Resultado: |cffFFCC00DROP|r")
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Jugador eliminado. Suelta sus items y reparte su oro actual.")
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
-            else
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Resultado: |cffFFCC00KICK|r")
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "Jugador expulsado. Reparte su oro actual.")
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, VOTO_SEP)
+        call SaveBoolean(udg_MB_Hash, id, 101, true)
+        set Voto_Expulsado[id] = true
+
+        set goldD = GetPlayerState(Player(id), PLAYER_STATE_RESOURCE_GOLD)
+        set j = 0
+        loop
+            exitwhen j > 9
+            if (Voto_IsAllyOfDeserter(j, id)) then
+                set allyCount = allyCount + 1
+            endif
+            set j = j + 1
+        endloop
+
+        if (allyCount > 0 and goldD > 0) then
+            set share = goldD / allyCount
+        endif
+
+        if (allyCount > 0) then
+            set j = 0
+            loop
+                exitwhen j > 9
+                if (Voto_IsAllyOfDeserter(j, id) and share > 0) then
+                    call SetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD) + share)
+                    if (not silent and GetPlayerController(Player(j)) == MAP_CONTROL_USER) then
+                        call DisplayTimedTextToPlayer(Player(j), 0, 0, 10.0, "Recibes |cffFFCC00+" + I2S(share) + "|r de oro.")
+                    endif
+                endif
+                set j = j + 1
+            endloop
+            if (goldD > 0) then
+                call SetPlayerState(Player(id), PLAYER_STATE_RESOURCE_GOLD, 0)
             endif
         endif
 
+        set locID = GetPlayerStartLocation(Player(id))
+        set baseX = GetStartLocationX(locID)
+        set baseY = GetStartLocationY(locID)
+
+        set hero = Voto_HeroRef[id]
+        if (hero != null) then
+            call PauseUnit(hero, false)
+        endif
+
+        set g = CreateGroup()
+        call GroupEnumUnitsOfPlayer(g, Player(id), null)
         loop
-            exitwhen i > 9
-            if (Voto_Desertores[i]) then
-                // Marcar como procesado para que tabla.j no re-ejecute
-                call SaveBoolean(udg_MB_Hash, i, 101, true)
-
-                // Expulsado por encuesta: marca PERSISTENTE. Nunca más vota
-                // ni hereda, aunque su slot siga PLAYING (el kick del master
-                // llama OnPlayerLeave ANTES de CustomDefeatBJ y el kickeado
-                // puede quedarse conectado viendo la derrota).
-                set Voto_Expulsado[i] = true
-
-                // === REPARTO DE ORO ACTUAL ===
-                // Aplica a DROP y a KICK. El oro ACTUAL del desertor se divide
-                // en partes IGUALES entre sus aliados vivos — HUMANOS y BOTS por
-                // igual (residuo de la división entera descartado).
-                set goldD = GetPlayerState(Player(i), PLAYER_STATE_RESOURCE_GOLD)
-                set allyCount = 0
-                set j = 0
+            set u = FirstOfGroup(g)
+            exitwhen u == null
+            call GroupRemoveUnit(g, u)
+            if (IsUnitType(u, UNIT_TYPE_HERO)) then
+                set slot = 0
                 loop
-                    exitwhen j > 9
-                    if (Voto_IsAllyOfDeserter(j, i)) then
-                        set allyCount = allyCount + 1
+                    exitwhen slot > 5
+                    set it = UnitItemInSlot(u, slot)
+                    if (it != null) then
+                        call UnitRemoveItem(u, it)
+                        call SetItemPosition(it, baseX, baseY)
                     endif
-                    set j = j + 1
+                    set slot = slot + 1
                 endloop
-
-                set share = 0
-                if (allyCount > 0 and goldD > 0) then
-                    set share = goldD / allyCount
-                endif
-
-                if (allyCount > 0) then
-                    set j = 0
-                    loop
-                        exitwhen j > 9
-                        if (Voto_IsAllyOfDeserter(j, i)) then
-                            if (share > 0) then
-                                call SetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD) + share)
-                                // Aviso SOLO al aliado HUMANO (los bots no leen).
-                                // Los enemigos NO entran a este loop. En modo
-                                // silent el oro igual se acredita; solo
-                                // desaparece el texto.
-                                if (not silent and GetPlayerController(Player(j)) == MAP_CONTROL_USER) then
-                                    call DisplayTimedTextToPlayer(Player(j), 0, 0, 10.0, "Heredas |cffFFCC00+" + I2S(share) + "|r de oro.")
-                                endif
-                            endif
-                        endif
-                        set j = j + 1
-                    endloop
-                    // Vaciar el oro del desertor (repartido; residuo descartado)
-                    if (goldD > 0) then
-                        call SetPlayerState(Player(i), PLAYER_STATE_RESOURCE_GOLD, 0)
-                    endif
-                endif
-
-                set locID = GetPlayerStartLocation(Player(i))
-                set baseX = GetStartLocationX(locID)
-                set baseY = GetStartLocationY(locID)
-
-                // Despausar héroe antes de manipularlo
-                set hero = Voto_HeroRef[i]
-                if (hero != null) then
-                    call PauseUnit(hero, false)
-                endif
-
-                // Soltar items y eliminar unidades del jugador
-                set g = CreateGroup()
-                call GroupEnumUnitsOfPlayer(g, Player(i), null)
-                loop
-                    set u = FirstOfGroup(g)
-                    exitwhen u == null
-                    call GroupRemoveUnit(g, u)
-                    if (IsUnitType(u, UNIT_TYPE_HERO)) then
-                        set slot = 0
-                        loop
-                            exitwhen slot > 5
-                            set it = UnitItemInSlot(u, slot)
-                            if (it != null) then
-                                call UnitRemoveItem(u, it)
-                                call SetItemPosition(it, baseX, baseY)
-                            endif
-                            set slot = slot + 1
-                        endloop
-                    endif
-                    call RemoveUnit(u)
-                endloop
-                call DestroyGroup(g)
             endif
-            set i = i + 1
+            call RemoveUnit(u)
         endloop
-
-        // Re-sembrar la línea base del detector de oro F11 (Comandos_Economia.j):
-        // el reparto del desertor movió oro entre aliados con SetPlayerState
-        // directo (sin pasar por Eco_MoveGold). Si no re-sembramos, el dump del
-        // desertor (sobre todo con UN solo aliado restante, que recibe el total
-        // exacto) se vería como un par −X/+X y el sondeo lo acreditaría como un
-        // regalo F11 falso. Esto absorbe ese movimiento.
-        set i = 0
-        loop
-            exitwhen i > 9
-            set Eco_GoldBaseline[i] = GetPlayerState(Player(i), PLAYER_STATE_RESOURCE_GOLD)
-            set i = i + 1
-        endloop
+        call DestroyGroup(g)
 
         set g = null
         set u = null
@@ -727,8 +733,70 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         set it = null
     endfunction
 
+    private function Voto_EjecutarContinuar takes integer winner, boolean silent returns nothing
+        local integer i = 0
+        local boolean hasBot = false
+        local boolean engineWasOff = false
+        local boolean didDrop = false
+
+        if (not silent) then
+            call Voto_ShowContinueResult(winner)
+        endif
+
+        if (winner == VOTE_BOT) then
+            loop
+                exitwhen i > 9
+                if (Voto_IsBotTarget(i)) then
+                    set hasBot = true
+                endif
+                set i = i + 1
+            endloop
+        endif
+
+        if (hasBot) then
+            set engineWasOff = not IA_System_On
+            if (engineWasOff) then
+                call IACore_InitializeBots()
+            endif
+        endif
+
+        set i = 0
+        loop
+            exitwhen i > 9
+            if (Voto_Desertores[i]) then
+                if (winner == VOTE_BOT and Voto_IsBotTarget(i)) then
+                    call Voto_ConvertOneToBot(i, engineWasOff)
+                else
+                    call Voto_DropOne(i, silent)
+                    set didDrop = true
+                endif
+            endif
+            set i = i + 1
+        endloop
+
+        // Absorber los movimientos directos de oro para que el detector F11
+        // no los confunda con regalos entre jugadores.
+        if (didDrop) then
+            set i = 0
+            loop
+                exitwhen i > 9
+                set Eco_GoldBaseline[i] = GetPlayerState(Player(i), PLAYER_STATE_RESOURCE_GOLD)
+                set i = i + 1
+            endloop
+        endif
+    endfunction
+
+    private function Voto_EjecutarBot takes nothing returns nothing
+        call Voto_EjecutarContinuar(VOTE_BOT, false)
+    endfunction
+
+    // silent=true conserva el DROP automático y sin mensajes de F0 vulnerable.
+    private function Voto_EjecutarDrop takes boolean silent returns nothing
+        call Voto_EjecutarContinuar(VOTE_DROP, silent)
+    endfunction
+
     // ==========================================================
-    // EJECUCIÓN: RMK — Callback del timer de 2 segundos
+    // EJECUCIÓN: RMK — Callback del siguiente tick del motor
     // ==========================================================
     private function Voto_EjecutarRmk_Callback takes nothing returns nothing
         local integer i = 0
@@ -770,23 +838,22 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     endfunction
 
     // ==========================================================
-    // RESOLUCIÓN: Contar votos, desempatar, ejecutar
+    // RESOLUCIÓN: RMK/CONTINUAR, luego BOT/DROP, ejecutar
     // ==========================================================
     private function Voto_Resolver takes nothing returns nothing
         local integer i = 0
         local integer countBot  = 0
         local integer countDrop = 0
         local integer countRmk  = 0
-        local integer bestBot   = 999
-        local integer bestDrop  = 999
-        local integer bestRmk   = 999
+        local integer countContinue = 0
+        local integer humanVotes = 0
+        local integer humanRmk   = 0
+        local integer orcVotes   = 0
+        local integer orcRmk     = 0
         local integer winner    = VOTE_DROP  // Default si nadie vota
-        // Voto ponderado: equipo del desertor y peso del votante actual.
-        local boolean desertorIsHuman = Voto_DesertorIsHuman()
-        local integer w = 1
 
         // Guarda anti-doble-resolución: solo UNA resolución por voto.
-        // Puede invocarse desde el último clic, el timer de 15s o el recuento
+        // Puede invocarse desde el último clic, el timer de 8s o el recuento
         // al abandonar; el primero gana y los demás se vuelven no-op.
         if (Voto_State != 2) then
             return
@@ -804,71 +871,66 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         set i = 0
         loop
             exitwhen i > 9
-            call DialogDisplay(Player(i), Voto_Dialog, false)
+            call DialogDisplay(Player(i), Voto_DialogAffected, false)
+            call DialogDisplay(Player(i), Voto_DialogOpposing, false)
             set i = i + 1
         endloop
 
-        // Contar votos (PONDERADO) y registrar orden más temprano por opción.
-        // Peso: el voto de un ALIADO del desertor vale 2; el de un enemigo, 1.
-        // Da prioridad al equipo afectado sin silenciar al rival. El desempate
-        // (best*) sigue por orden de EMISIÓN, sin ponderar.
+        // Contar SOLO votos emitidos por jugadores que siguen siendo válidos.
+        // Todos pesan 1. Para la primera decisión, BOT, DROP y CONTINUAR
+        // pertenecen al bloque CONTINUAR; RMK forma el bloque contrario.
         set i = 0
         loop
             exitwhen i > 9
-            if (Voto_Votos[i] != VOTE_NONE) then
-                if ((i <= 4) == desertorIsHuman) then
-                    set w = 2
+            if (Voto_IsValidVoter(i) and Voto_Votos[i] != VOTE_NONE) then
+                if (i <= 4) then
+                    set humanVotes = humanVotes + 1
                 else
-                    set w = 1
+                    set orcVotes = orcVotes + 1
                 endif
+
                 if (Voto_Votos[i] == VOTE_BOT) then
-                    set countBot = countBot + w
-                    if (Voto_Orden[i] < bestBot) then
-                        set bestBot = Voto_Orden[i]
+                    set countContinue = countContinue + 1
+                    if ((i <= 4) == Voto_AffectedIsHuman) then
+                        set countBot = countBot + 1
                     endif
                 elseif (Voto_Votos[i] == VOTE_DROP) then
-                    set countDrop = countDrop + w
-                    if (Voto_Orden[i] < bestDrop) then
-                        set bestDrop = Voto_Orden[i]
+                    set countContinue = countContinue + 1
+                    if ((i <= 4) == Voto_AffectedIsHuman) then
+                        set countDrop = countDrop + 1
                     endif
                 elseif (Voto_Votos[i] == VOTE_RMK) then
-                    set countRmk = countRmk + w
-                    if (Voto_Orden[i] < bestRmk) then
-                        set bestRmk = Voto_Orden[i]
+                    set countRmk = countRmk + 1
+                    if (i <= 4) then
+                        set humanRmk = humanRmk + 1
+                    else
+                        set orcRmk = orcRmk + 1
                     endif
+                elseif (Voto_Votos[i] == VOTE_CONTINUE) then
+                    set countContinue = countContinue + 1
                 endif
             endif
             set i = i + 1
         endloop
 
-        // Determinar ganador (mayor conteo; desempate por voto más temprano)
-        // Si nadie votó (todo en 0), el default VOTE_DROP se mantiene.
+        // FASE 1: RMK contra CONTINUAR usando solo votos emitidos.
+        // Excepción: si TODOS los votantes que sí participaron en cualquiera
+        // de los dos equipos eligieron RMK, ese equipo fuerza el RMK. Se exige
+        // al menos un voto para que un equipo sin participación no sea unánime
+        // por vacío. Una abstención no suma ni bloquea esta excepción.
+        // Fuera de la excepción, RMK gana solo si supera al bloque CONTINUAR;
+        // el empate favorece continuar.
+        //
+        // FASE 2: si se continúa, solo BOT/DROP del equipo afectado llegaron
+        // mediante su Dialog. BOT requiere mayoría estricta; todo empate,
+        // incluido 0-0, conserva el default DROP.
         set winner = VOTE_DROP
-
-        if (countBot > countDrop and countBot > countRmk) then
-            // BOT gana con mayoría estricta
-            set winner = VOTE_BOT
-        elseif (countRmk > countBot and countRmk > countDrop) then
-            // RMK gana con mayoría estricta
+        if ((humanVotes > 0 and humanRmk == humanVotes) or (orcVotes > 0 and orcRmk == orcVotes)) then
             set winner = VOTE_RMK
-        elseif (countDrop > countBot and countDrop > countRmk) then
-            // DROP gana con mayoría estricta
-            set winner = VOTE_DROP
-        else
-            // EMPATE entre 2 o más opciones (o todos en 0)
-            // Desempate: la opción cuyo primer voto fue más temprano gana.
-            // Si nadie votó, todos los best* quedan en 999 y DROP gana por default.
-            if (countBot > 0 and countBot >= countDrop and countBot >= countRmk) then
-                if (bestBot <= bestDrop and bestBot <= bestRmk) then
-                    set winner = VOTE_BOT
-                endif
-            endif
-            if (countRmk > 0 and countRmk >= countBot and countRmk >= countDrop) then
-                if (bestRmk <= bestBot and bestRmk <= bestDrop) then
-                    set winner = VOTE_RMK
-                endif
-            endif
-            // Si ningún empate fue resuelto, VOTE_DROP se mantiene como default.
+        elseif (countRmk > countContinue) then
+            set winner = VOTE_RMK
+        elseif (countBot > countDrop) then
+            set winner = VOTE_BOT
         endif
 
         // Descongelar todas las unidades que nosotros pausamos
@@ -916,27 +978,27 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         local integer vote = VOTE_NONE
 
         // Determinar qué botón presionó
-        if (clicked == Voto_BtnBot) then
+        if (clicked == Voto_BtnAffectedBot) then
             set vote = VOTE_BOT
-        elseif (clicked == Voto_BtnDrop) then
+        elseif (clicked == Voto_BtnAffectedDrop) then
             set vote = VOTE_DROP
-        elseif (clicked == Voto_BtnRmk) then
+        elseif (clicked == Voto_BtnAffectedRmk or clicked == Voto_BtnOpposingRmk) then
             set vote = VOTE_RMK
+        elseif (clicked == Voto_BtnAffectedContinue or clicked == Voto_BtnOpposingContinue) then
+            set vote = VOTE_CONTINUE
         endif
 
         // Seguridad: Solo registrar si es un voto válido y no ha votado antes
         if (vote != VOTE_NONE and Voto_Votos[id] == VOTE_NONE and Voto_IsValidVoter(id)) then
             // Registrar voto
             set Voto_Votos[id] = vote
-            set Voto_OrdenCount = Voto_OrdenCount + 1
-            set Voto_Orden[id] = Voto_OrdenCount
             set Voto_Emitidos = Voto_Emitidos + 1
 
             // Anunciar al público
             call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 7.0, Voto_GetColor(p) + GetPlayerName(p) + "|r ha votado por: " + Voto_GetVoteName(vote))
 
             // ¿Votaron TODOS los válidos? ? Resolver de inmediato.
-            // Los AFK ya no bloquean: si alguno no vota, el timer de 7s
+            // Los AFK ya no bloquean: si alguno no vota, el timer de 8s
             // (RESOLVE_TIMEOUT) cierra el voto solo (efectivo en multi).
             if (Voto_Emitidos >= Voto_Validos) then
                 call Voto_Resolver()
@@ -961,8 +1023,8 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     // ==========================================================
     // ¿Algún desertor pendiente conserva su héroe?
     // ==========================================================
-    // Fija Voto_AnyHeroDesertor, que decide el texto DROP (con héroe) vs
-    // KICK (sin héroe) en Voto_EjecutarDrop y el set de botones del Dialog.
+    // Mantiene correcto el resumen final. Los botones dependen exclusivamente
+    // de Voto_PrimaryHasHero: una salida posterior nunca cambia la encuesta.
     private function Voto_RefreshAnyHeroDesertor takes nothing returns nothing
         local integer i = 0
         set Voto_AnyHeroDesertor = false
@@ -980,7 +1042,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     // ==========================================================
     // NO llamamos PauseGame (límite de usos en multi). Solo PauseUnit.
     // Nota: en UN JUGADOR, mostrar el Dialog auto-pausa la partida entera
-    // (comportamiento del motor), por eso allí el timer de 7s queda congelado;
+    // (comportamiento del motor), por eso allí el timer de 8s queda congelado;
     // es inofensivo porque el único votante (el host) siempre puede cerrar.
     // Llamada directamente desde OnPlayerLeave (que corre en trigger-context).
     private function Voto_AbrirVotacion takes nothing returns nothing
@@ -988,6 +1050,9 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
 
         // Cambiar estado
         set Voto_State = 2
+
+        // Mantener correcto el resumen incluso si no queda nadie para votar.
+        call Voto_RefreshAnyHeroDesertor()
 
         // Contar votantes válidos
         set Voto_Validos = Voto_CountValidVoters()
@@ -1002,42 +1067,57 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Congelar todas las unidades del mapa (sin límite, a diferencia de PauseGame)
         call Voto_FreezeAllUnits()
 
-        // Detectar si algún desertor tiene héroe (Caso 1 vs Caso 2)
-        call Voto_RefreshAnyHeroDesertor()
+        // Preparar ambos Dialogs. Los handles de botones anteriores dejan de ser
+        // válidos tras DialogClear, así que se nullea todo antes de reconstruir.
+        call DialogClear(Voto_DialogAffected)
+        call DialogClear(Voto_DialogOpposing)
+        call DialogSetMessage(Voto_DialogAffected, "Un jugador se desconectó")
+        call DialogSetMessage(Voto_DialogOpposing, "Un jugador se desconectó")
+        set Voto_BtnAffectedBot = null
+        set Voto_BtnAffectedDrop = null
+        set Voto_BtnAffectedContinue = null
+        set Voto_BtnAffectedRmk = null
+        set Voto_BtnOpposingContinue = null
+        set Voto_BtnOpposingRmk = null
 
-        // Preparar Dialog
-        call DialogClear(Voto_Dialog)
-        call DialogSetMessage(Voto_Dialog, "Que hacer con el desconectado?")
-        if (Voto_AnyHeroDesertor) then
-            // CASO 2: Tiene héroe.
-            set Voto_BtnDrop = DialogAddButton(Voto_Dialog, "DROP (Soltar items y repartir su oro)", 0)
+        if (Voto_PrimaryHasHero) then
+            // CASO 2: Tiene héroe. El equipo afectado decide cómo continuar.
+            set Voto_BtnAffectedDrop = DialogAddButton(Voto_DialogAffected, "DROP (Soltar items y repartir su oro)", 0)
             // BOT solo está permitido FUERA del Modo Aleatorio de Habilidades.
             // Con ModoAl_Activo, un bot no puede reemplazar al desertor: se omite
             // la opción para garantizar que ningún bot juegue ese modo.
             if (not ModoAl_Activo) then
-                set Voto_BtnBot = DialogAddButton(Voto_Dialog, "BOT (Un BOT lo reemplaza)", 0)
-            else
-                set Voto_BtnBot = null
+                set Voto_BtnAffectedBot = DialogAddButton(Voto_DialogAffected, "BOT (Un BOT lo reemplaza)", 0)
             endif
-            set Voto_BtnRmk  = DialogAddButton(Voto_Dialog, "RMK (Expulsar a todos)", 0)
+            set Voto_BtnAffectedRmk = DialogAddButton(Voto_DialogAffected, "RMK (Expulsar a todos)", 0)
+
+            // El equipo contrario solo decide si la partida continúa.
+            set Voto_BtnOpposingContinue = DialogAddButton(Voto_DialogOpposing, "CONTINUAR (Seguir jugando)", 0)
+            set Voto_BtnOpposingRmk = DialogAddButton(Voto_DialogOpposing, "RMK (Expulsar a todos)", 0)
         else
-            // CASO 1: No tiene héroe ? 2 opciones (sin BOT)
-            set Voto_BtnDrop = DialogAddButton(Voto_Dialog, "KICK (Repartir su oro y seguir)", 0)
-            set Voto_BtnBot  = null
-            set Voto_BtnRmk  = DialogAddButton(Voto_Dialog, "RMK (Expulsar a todos)", 0)
+            // CASO 1: No tiene héroe. Para ambos equipos CONTINUAR ejecuta
+            // el KICK actual: repartir su oro y seguir, sin héroe ni items.
+            set Voto_BtnAffectedContinue = DialogAddButton(Voto_DialogAffected, "CONTINUAR (Repartir su oro y seguir)", 0)
+            set Voto_BtnAffectedRmk = DialogAddButton(Voto_DialogAffected, "RMK (Expulsar a todos)", 0)
+            set Voto_BtnOpposingContinue = DialogAddButton(Voto_DialogOpposing, "CONTINUAR (Repartir su oro y seguir)", 0)
+            set Voto_BtnOpposingRmk = DialogAddButton(Voto_DialogOpposing, "RMK (Expulsar a todos)", 0)
         endif
 
-        // Mostrar a todos los votantes válidos
+        // Mostrar a cada votante válido el Dialog que corresponde a su equipo.
         set i = 0
         loop
             exitwhen i > 9
             if (Voto_IsValidVoter(i)) then
-                call DialogDisplay(Player(i), Voto_Dialog, true)
+                if ((i <= 4) == Voto_AffectedIsHuman) then
+                    call DialogDisplay(Player(i), Voto_DialogAffected, true)
+                else
+                    call DialogDisplay(Player(i), Voto_DialogOpposing, true)
+                endif
             endif
             set i = i + 1
         endloop
 
-        // Red de seguridad: cerrar el voto a los 15s aunque queden AFKs.
+        // Red de seguridad: cerrar el voto a los 8s aunque queden AFKs.
         // (Solo dispara en multi; en SP el Dialog pausa el juego y lo congela.)
         set Voto_TimerResolve = CreateTimer()
         call TimerStart(Voto_TimerResolve, RESOLVE_TIMEOUT, false, function Voto_Resolver)
@@ -1102,7 +1182,8 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Ocultar dialog a todos
         loop
             exitwhen i > 9
-            call DialogDisplay(Player(i), Voto_Dialog, false)
+            call DialogDisplay(Player(i), Voto_DialogAffected, false)
+            call DialogDisplay(Player(i), Voto_DialogOpposing, false)
             set i = i + 1
         endloop
         // Descongelar todas las unidades
@@ -1141,9 +1222,18 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Capturar héroe ANTES de que otro sistema lo borre
         call Voto_CapturarHeroe(p)
 
+        // Fijar una sola vez el equipo afectado de este ciclo. Los abandonos
+        // adicionales se agregan al resultado actual, pero no cambian los
+        // Dialogs que ya recibieron los jugadores.
+        if (Voto_NumDesertores == 0) then
+            set Voto_AffectedIsHuman = (id <= 4)
+            set Voto_PrimaryHasHero = (Voto_HeroRef[id] != null)
+        endif
+
         // Marcar como desertor
         set Voto_Desertores[id] = true
         set Voto_NumDesertores = Voto_NumDesertores + 1
+        call Voto_RefreshAnyHeroDesertor()
 
         // --- FASE 0 VULNERABLE: DROP automático, sin encuesta y SIN MENSAJES ---
         // Si el castillo/fortaleza (F0) de CUALQUIER facción ya está
@@ -1156,7 +1246,6 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         // Guarda != 2: si un voto ya estaba abierto (empezó antes de que cayera
         // la F1), lo dejamos resolver por su vía normal en vez de pisarlo.
         if (Voto_F0Vulnerable() and Voto_State != 2) then
-            call Voto_RefreshAnyHeroDesertor()
             call Voto_EjecutarDrop(true)
             call Voto_Reset()
             return
@@ -1182,7 +1271,16 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
             // VOTING ? recontar votantes válidos (el que se fue ya no cuenta) y
             // re-chequear el cierre: si era el voto que faltaba, resolver ya en
             // vez de esperar el timer. En SP es no-op (los que se van son bots).
-            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, "|cffFFCC00[SISTEMA]|r Abandono adicional registrado.")
+            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, "|cffFFCC00[SISTEMA]|r Otro jugador abandonó.")
+            // Si ya había votado, retirar ese voto: al abandonar deja de ser
+            // votante válido y tampoco debe provocar un cierre anticipado falso.
+            if (Voto_Votos[id] != VOTE_NONE) then
+                set Voto_Votos[id] = VOTE_NONE
+                set Voto_Emitidos = Voto_Emitidos - 1
+                if (Voto_Emitidos < 0) then
+                    set Voto_Emitidos = 0
+                endif
+            endif
             set Voto_Validos = Voto_CountValidVoters()
             if (Voto_Validos <= 0 or Voto_Emitidos >= Voto_Validos) then
                 call Voto_Resolver()
@@ -1195,8 +1293,10 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     // ==========================================================
     private function OnInit takes nothing returns nothing
         local trigger t = CreateTrigger()
-        set Voto_Dialog = DialogCreate()
-        call TriggerRegisterDialogEvent(t, Voto_Dialog)
+        set Voto_DialogAffected = DialogCreate()
+        set Voto_DialogOpposing = DialogCreate()
+        call TriggerRegisterDialogEvent(t, Voto_DialogAffected)
+        call TriggerRegisterDialogEvent(t, Voto_DialogOpposing)
         call TriggerAddAction(t, function Voto_OnDialogClick)
         set t = null
 

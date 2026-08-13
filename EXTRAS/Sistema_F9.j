@@ -15,8 +15,9 @@
 //     8. v1.4
 //     9. v1.5
 //    10. v1.6
-//    11. v1.7 (actual)
-//    12. Acerca de
+//    11. v1.7
+//    12. v1.8 (actual)
+//    13. Acerca de
 //
 //   DERECHA - "Informacion en Vivo" (required=false):
 //     1. Registro de Bajas  -> vive en Sistema_Anuncios.j (NO se toca)
@@ -51,7 +52,8 @@ globals
     quest F9_QV14       = null   // v1.4
     quest F9_QV15       = null   // v1.5
     quest F9_QV16       = null   // v1.6
-    quest F9_QV17       = null   // v1.7 (version actual)
+    quest F9_QV17       = null   // v1.7
+    quest F9_QV18       = null   // v1.8 (version actual)
     quest F9_QAcerca    = null
     quest F9_QComandos  = null
 endglobals
@@ -383,11 +385,11 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV16 = F9_CreateTab("v1.6", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 11: v1.7  (version actual)
+    // PESTAÑA 11: v1.7
     // Mismo estilo que v1.6: una linea por cambio, secciones, "antes X, ahora
     // Y", solo el nombre en color. Ver NOTA DE LIMITE (~4096 chars) arriba.
     // ------------------------------------------------------------------
-    set d = "|cffFFCC00v1.7|r  |cff888888(version actual)|r"
+    set d = "|cffFFCC00v1.7|r"
     set d = d + "|nCómo leer? => nivel 1 / nivel maximo (valores anteriores).|r"
     set d = d + "|n"
     set d = d + "|n|cffFFCC00HABILIDADES|r"
@@ -399,13 +401,44 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n|cffFFCC00ARREGLOS|r"
     set d = d + "|n  - |cffFFCC00Mano del Rey|r: el indicador sobre la cabeza ya no desaparece. Antes ciertas habilidades sobre el portador (|cffFFCC00Hex|r, |cffFFCC00Empalar|r) lo borraban para siempre y el heroe seguia con el item pero sin marca."
     set d = d + "|n  - |cffFFCC00Gancho|r |cff888888(Abominacion)|r: ya no arrastra al |cffFFCC00Rey de la Montaña|r en Gran Avatar. Tampoco arrastra unidades invulnerables (ej. |cffFFCC00Escudo Divino|r del Paladin): el gancho les pasa de largo y sigue viaje buscando otro objetivo."
-    set F9_QV17 = F9_CreateTab("v1.7 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", d, true)
+    set F9_QV17 = F9_CreateTab("v1.7", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 12: ACERCA DE
+    // PESTAÑA 12: v1.8  (version actual)
+    // ------------------------------------------------------------------
+    set d = "|cffFFCC00v1.8|r  |cff888888(version actual)|r"
+    set d = d + "|nBalance de heroes, mapa, defensas, creeps y votacion por abandono."
+    set d = d + "|nComo leer? => nivel 1 / nivel maximo (valores anteriores)."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00HABILIDADES|r"
+    set d = d + "|n  - |cffFFCC00Ventisca|r |cff888888(Archimago)|r: daño 35/197 (35/175), tope 140/788 (120/565)."
+    set d = d + "|n  - |cffFFCC00Lluvia de Fuego|r |cff888888(Señor del Foso)|r: daño 35/197 (35/175), tope 140/788 (120/565)."
+    set d = d + "|n  - |cffFFCC00Aullido de Terror|r |cff888888(Señor del Foso)|r: mana 50/290 (50/410), area 600/1000 (500/905), reduccion 16%/100% (10%/100%; ahora llega a 100% desde nivel 7), enfria 18s (20)."
+    set d = d + "|n  - |cffFFCC00Perdicion|r |cff888888(Señor del Foso)|r: dura 120/180s (120/240), enfria 120/180s (200/250), mana 300/800 (200/700)."
+    set d = d + "|n  - |cffFFCC00Guardian del Apocalipsis|r: defensa 20/50 (10/25), movimiento 325/450 (270/370), vida 2000/5000 (1500/4000), regeneracion de mana 5/s (0), velocidad de ataque 0.7 (1.0)."
+    set d = d + "|n  - |cffFFCC00Pisoton Guardian del Apocalipsis|r: ahora muestra un anillo visual que delimita su area de efecto de 250."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00MAPA Y AMBIENTE|r"
+    set d = d + "|n  - |cffFFCC00Niebla y zoom|r: la distancia maxima de la niebla sube a 3500 (antes 2900). El comando |cffFFCC00-z3|r, con zoom 2750, ahora ofrece mas vision sin que la niebla resulte tan molesta."
+    set d = d + "|n  - |cffFFCC00Clima|r: la lluvia intensa fue reemplazada por una combinacion de lluvia y nevada ligera."
+    set d = d + "|n  - |cffFFCC00Decoracion|r: se agregaron dos pequenos adornos ambientales con cadaveres empalados o junto a una antorcha."
+    set d = d + "|n  - |cffFFCC00Nuevo Comando (-aliados):|r muestra el oro actual de cada aliado."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00ESTRUCTURAS Y CREEPS|r"
+    set d = d + "|n  - NUEVO: Al destruir una |cffFFCC00cripera enemiga|r de Fase 2, la cripera equivalente de tu equipo queda vulnerable (manada con manada y tanque con tanque). Puedes destruirla para impedir que el rival siga ganando oro y experiencia con tus creeps. Las demas estructuras y el orden de las fases no cambian."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00VOTACION POR ABANDONO|r"
+    set d = d + "|n  - El equipo del primer desconectado elige |cff00CCFFBOT|r, |cffFFCC00DROP|r o |cffFF4444RMK|r. El rival elige |cff55DD55CONTINUAR|r o |cffFF4444RMK|r."
+    set d = d + "|n  - Todos los votos valen 1. |cff00CCFFBOT|r, |cffFFCC00DROP|r y |cff55DD55CONTINUAR|r cuentan por seguir jugando. Los empates continuan."
+    set d = d + "|n  - |cffFF4444RMK|r gana por mayoria de votos emitidos o si todos los que votaron en un equipo eligieron RMK."
+    set d = d + "|n  - Si luego sale alguien del otro equipo, recibe |cffFFCC00DROP|r por defecto. Sin heroe siempre es |cffFFCC00KICK|r."
+    set F9_QV18 = F9_CreateTab("v1.8 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", d, true)
+
+    // ------------------------------------------------------------------
+    // PESTAÑA 13: ACERCA DE
     // ------------------------------------------------------------------
     set d = "|cffFFCC00Orcos vs Humanos Infinito|r"
-    set d = d + "|n|cffFFCC00Version 1.7|r"
+    set d = d + "|n|cffFFCC00Version 1.8|r"
     set d = d + "|n"
     set d = d + "|nMapa competitivo tipo MOBA"
     set d = d + "|npara Warcraft III 1.27b."
@@ -443,6 +476,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n  Ver tu velocidad de movimiento (base + bonus)."
     set d = d + "|n|cffFFCC00-ma|r"
     set d = d + "|n  Matchup: que heroe controla cada enemigo."
+    set d = d + "|n|cffFFCC00-aliados|r"
+    set d = d + "|n  Ver el oro actual de cada aliado."
     set d = d + "|n|cffFFCC00-kick|r |cff888888[jugador]|r"
     set d = d + "|n  Expulsar jugador (solo Master)."
     set d = d + "|n|cffFFCC00-z1|r / |cffFFCC00-z2|r / |cffFFCC00-z3|r"
@@ -460,8 +495,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     // llamar F9_CreateTab en UNA sola linea). No hace falta guardar el handle
     // si la pestaña es estatica.
     //
-    // Para una NUEVA VERSION (ej. v1.7): copiar el bloque de una pestaña de
-    // version, cambiar el titulo/contenido y agregar su global (F9_QV17).
+    // Para una NUEVA VERSION (ej. v1.9): copiar el bloque de una pestaña de
+    // version, cambiar el titulo/contenido y agregar su global (F9_QV19).
     // NUNCA meter todas las versiones en una sola pestaña: se pasa del limite
     // de ~4096 chars y crashea la carga (ver NOTA DE LIMITE arriba).
     // ------------------------------------------------------------------
