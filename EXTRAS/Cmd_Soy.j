@@ -14,14 +14,14 @@ function Trig_Soy_Actions takes nothing returns nothing
     local string nombre = GetPlayerName(p)
 
     if (nombre == GetMasterNick()) then
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "|cffFFCC00════════════════════════════════════════════|r")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "         |cff00FF00Orcos vs Humanos Infinito 1.8|r")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "   |cffAAAAAAEl editor de esta version esta en la sala.|r")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, " ")
-        call DisplayTimedTextToForce(GetPlayersAll(), 10.0, "|cffFFCC00════════════════════════════════════════════|r")
+        call Replay_DisplayTimedTextToAll(10.0, " ")
+        call Replay_DisplayTimedTextToAll(10.0, "|cffFFCC00════════════════════════════════════════════|r")
+        call Replay_DisplayTimedTextToAll(10.0, " ")
+        call Replay_DisplayTimedTextToAll(10.0, "         |cff00FF00Orcos vs Humanos Infinito 1.9|r")
+        call Replay_DisplayTimedTextToAll(10.0, " ")
+        call Replay_DisplayTimedTextToAll(10.0, "   |cffAAAAAAEl editor de esta version esta en la sala.|r")
+        call Replay_DisplayTimedTextToAll(10.0, " ")
+        call Replay_DisplayTimedTextToAll(10.0, "|cffFFCC00════════════════════════════════════════════|r")
     endif
 
     set p = null

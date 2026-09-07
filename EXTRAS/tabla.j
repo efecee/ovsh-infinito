@@ -835,7 +835,7 @@ function Trig_MB_Leaver_Actions takes nothing returns nothing
     // --- SI LLEGAMOS AQUI, FUE UN LEAVER VOLUNTARIO (ALT+F4 / SALIR) ---
     
     // 1. MENSAJE DE ABANDONO
-    call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, MB_GetColor(p) + GetPlayerName(p) + "|r ha abandonado la partida.")
+    call Replay_DisplayTimedTextToAll(5.0, MB_GetColor(p) + GetPlayerName(p) + "|r ha abandonado la partida.")
 
     // 2. ATENUAR FILA EN LA TABLA (Nombre + K/D/A en gris)
     call MB_FadeRow(id)
@@ -901,21 +901,21 @@ function Trig_MB_Init_Actions takes nothing returns nothing
     
     // Columna 1: Kills
     set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 1)
-    call MultiboardSetItemValue(mb_item, "K") 
+    call MultiboardSetItemValue(mb_item, "|cffFFCC00K|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
     // Columna 2: Deaths
     set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 2)
-    call MultiboardSetItemValue(mb_item, "D")
+    call MultiboardSetItemValue(mb_item, "|cffFFCC00D|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
 
     // Columna 3: Assists (NUEVA)
     set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 3)
-    call MultiboardSetItemValue(mb_item, "A")
+    call MultiboardSetItemValue(mb_item, "|cffFFCC00A|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
     call MultiboardSetItemStyle(mb_item, true, false) // Icono APAGADO
     call MultiboardReleaseItem(mb_item)

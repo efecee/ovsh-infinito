@@ -5,23 +5,25 @@
 // COMANDOS:
 //   -oro <jugador> <cantidad|todo>     Transferencia directa de oro.
 //   -madera <jugador> <cantidad|todo>  Transferencia directa de madera.
-//   -fondo <cantidad>                  Abre una petición de oro (bote) para tu equipo.
-//   -ok                                Aporta al bote activo de tu equipo (da solo lo que falta).
+//   -fondo / -f <cantidad>             Abre una petición de oro (bote) para tu equipo.
+//   ok / -ok                           Aporta al bote activo de tu equipo (da solo lo que falta).
 //
 // PETICIÓN DE ORO (bote / crowdfunding, SOLO ORO):
 //   - UNA petición activa por equipo a la vez. Dura ECO_REQ_DURATION segundos.
-//     Mientras una está activa, todo "-fondo" nuevo del equipo se IGNORA en silencio.
+//     Mientras una está activa, todo "-fondo"/"-f" nuevo del equipo se IGNORA en silencio.
 //   - La solicitud muestra un PANEL vivo en pantalla (texttag que sigue la cámara,
 //     estilo Datos_EnVivo) con progreso y contador en vivo; se reemplaza al instante
 //     y desaparece de golpe. Además deja un LOG corto en el chat por cada hito.
-//   - "-ok" entrega min(faltante, tu oro). Varios "-ok" llenan el bote hasta la meta.
+//   - "ok" o "-ok" entrega min(faltante, tu oro). Varios aportes llenan el bote hasta la meta.
+//     El "ok" sin guion solo se interpreta durante los 20s de una petición activa;
+//     fuera de esa ventana es chat normal y se ignora por completo.
 //   - "-oro <pedidor> N" envía N literal (capado solo a tu oro); si llega/supera la meta, cierra.
-//   - Una contribución (por "-ok" o por "-oro" al pedidor) es PÚBLICA: mismo mensaje para
+//   - Una contribución (por "ok"/"-ok" o por "-oro" al pedidor) es PÚBLICA: mismo mensaje para
 //     todo el equipo (no las 3 vistas personalizadas de una transferencia directa).
 //     El aporte que completa anuncia "(meta/meta) ¡Completada!" en el chat; si "-oro"
 //     sobrepasó la meta, agrega "+N extra" (el sobrante también va al pedidor).
 //   - El cuadro de apertura tiene variante en 1ra persona para el propio pedidor.
-//   - Visible SOLO para aliados (mensajes y reloj filtrados por GetLocalPlayer).
+//   - Visible SOLO para aliados (mensajes por slot y panel según el POV observado).
 //
 // CONTABILIDAD (premio "Top Donador" / puntaje en Sistema_Victoria.j):
 //   - TODO oro que cambia de bolsillo suma key 701 al DONANTE y key 702 al
@@ -72,7 +74,7 @@ globals
     // INVARIANTE: el sondeo solo debe "ver" como delta los REGALOS F11. Por eso
     // TODO otro movimiento de oro que NO sea un regalo F11 debe mantener
     // Eco_GoldBaseline en sync (avanzar la base o re-sembrar). Fuentes enganchadas:
-    //   - comandos -oro/-fondo/-ok ........... Eco_MoveGold (este archivo)
+    //   - comandos -oro/-fondo/-f/ok/-ok ..... Eco_MoveGold (este archivo)
     //   - renta base (a todos, 1s) ........... Core_Mecanica_Oro (GUI custom script)
     //   - reparto del oro del desertor ....... Voto_EjecutarDrop (Sistema_Voto.j)
     //   - COMPRAS en tienda .................. Eco_OnItemBought (este archivo, vía IADataItems)
@@ -295,16 +297,19 @@ function Eco_Req_PanelText takes integer team, integer secsLeft returns string
     return Eco_CName(Player(Eco_Req_Requester[team])) + " |cffFFCC00" + I2S(Eco_Req_Filled[team]) + "/" + I2S(Eco_Req_Goal[team]) + "|r  " + I2S(secsLeft) + "s"
 endfunction
 
-// --- Reposiciona el panel contra la cámara LOCAL (lo hace seguir la pantalla).
-//     Solo visible para aliados del que pidió (desync-safe: el texttag es visual). ---
+// --- Reposiciona el panel contra la cámara del POV observado (en juego normal,
+//     la cámara local). Solo es visible para aliados del que pidió y respeta
+//     -hud (desync-safe: el texttag es puramente visual). ---
 function Eco_Req_Reposition takes integer team returns nothing
     local player req = Player(Eco_Req_Requester[team])
+    local player viewer = GetReplayPlayerCached()
     local real ratio
     if (Eco_Req_Tag[team] == null) then
         set req = null
+        set viewer = null
         return
     endif
-    if ((IsPlayerAlly(GetLocalPlayer(), req) or GetLocalPlayer() == req) and not Eco_HudHidden[GetPlayerId(GetLocalPlayer())]) then
+    if ((IsPlayerAlly(viewer, req) or viewer == req) and not Eco_HudHidden[GetPlayerId(viewer)]) then
         set ratio = GetCameraField(CAMERA_FIELD_TARGET_DISTANCE) / ECO_PANEL_ZOOM_REF
         if (ratio < 0.5) then
             set ratio = 0.5
@@ -317,6 +322,7 @@ function Eco_Req_Reposition takes integer team returns nothing
         call SetTextTagVisibility(Eco_Req_Tag[team], false)
     endif
     set req = null
+    set viewer = null
 endfunction
 
 // --- Cierre INMEDIATO: destruye panel + timer y resetea (sin grace). ---
@@ -445,10 +451,10 @@ function Eco_Req_AnnounceOpen takes integer team, player req, integer amount ret
             call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "|cffFFCC00====================================|r")
             if (p == req) then
                 call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Pediste |cffFFCC00" + I2S(amount) + "|r de oro a tu equipo")
-                call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Tus aliados pueden aportar con |cffFFCC00-ok|r")
+                call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Tus aliados pueden aportar con |cffFFCC00ok|r")
             else
                 call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   " + Eco_CName(req) + " ha solicitado |cffFFCC00" + I2S(amount) + "|r de oro")
-                call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Escribe |cffFFCC00-ok|r para aportar")
+                call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Escribe |cffFFCC00ok|r para aportar")
             endif
             call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "|cffFFCC00====================================|r")
         endif
@@ -457,7 +463,7 @@ function Eco_Req_AnnounceOpen takes integer team, player req, integer amount ret
     set p = null
 endfunction
 
-// --- "-fondo <cantidad>": abre una colecta de oro para el equipo del emisor ---
+// --- "-fondo <cantidad>" / "-f <cantidad>": abre una colecta de oro para el equipo del emisor ---
 function Eco_HandlePido takes player sender, string amountStr returns nothing
     local integer team = Eco_TeamIndex(sender)
     local integer amount
@@ -468,7 +474,7 @@ function Eco_HandlePido takes player sender, string amountStr returns nothing
     endif
     set amount = S2I(amountStr)
     if (amount <= 0) then
-        call DisplayTimedTextToPlayer(sender, 0, 0, 5.0, "Cantidad inválida. Usa: -fondo 500")
+        call DisplayTimedTextToPlayer(sender, 0, 0, 5.0, "Cantidad inválida. Usa: -fondo 500 o -f 500")
         return
     endif
     // Tope silencioso: aunque pida más, la colecta nunca excede ECO_REQ_MAX_GOAL.
@@ -495,7 +501,7 @@ function Eco_HandlePido takes player sender, string amountStr returns nothing
     call Eco_Req_AnnounceOpen(team, sender, amount)
 endfunction
 
-// --- "-ok": aporta al bote activo del equipo del emisor (da solo lo que falta) ---
+// --- "ok" / "-ok": aporta al bote activo del equipo del emisor (da solo lo que falta) ---
 function Eco_HandleOk takes player sender returns nothing
     local integer team = Eco_TeamIndex(sender)
     local player req
@@ -534,6 +540,22 @@ function Eco_HandleOk takes player sender returns nothing
     set req = null
 endfunction
 
+// --- "ok" sin guion: respuesta contextual y silenciosa fuera de una colecta. ---
+// Este listener recibe el chat general para poder ignorar mayusculas/minusculas,
+// pero exige que el mensaje completo sea "ok" y que la ventana siga activa.
+function Eco_HandleBareOkChat takes nothing returns nothing
+    local string chat = StringCase(GetEventPlayerChatString(), false)
+    local player sender = GetTriggerPlayer()
+    local integer team
+    if (chat == "ok") then
+        set team = Eco_TeamIndex(sender)
+        if (Eco_Req_Active[team]) then
+            call Eco_HandleOk(sender)
+        endif
+    endif
+    set sender = null
+endfunction
+
 // --- ACCIÓN PRINCIPAL ---
 function Trig_Comandos_Economia_Actions takes nothing returns nothing
     local string chat = GetEventPlayerChatString()
@@ -560,6 +582,10 @@ function Trig_Comandos_Economia_Actions takes nothing returns nothing
         return
     elseif (SubString(chat, 0, 7) == "-fondo ") then
         call Eco_HandlePido(sender, SubString(chat, 7, StringLength(chat)))
+        set sender = null
+        return
+    elseif (SubString(chat, 0, 3) == "-f ") then
+        call Eco_HandlePido(sender, SubString(chat, 3, StringLength(chat)))
         set sender = null
         return
     endif
@@ -838,6 +864,7 @@ endfunction
 function InitTrig_Comandos_Economia takes nothing returns nothing
     local integer i = 0
     local trigger t = CreateTrigger()
+    local trigger bareOk = CreateTrigger()
 
     // Crear sonidos globales persistentes (patrón tabla.j: nunca se destruyen)
     set Eco_Snd_Gold = CreateSound("Abilities\\Spells\\Items\\ResourceItems\\ReceiveGold.wav", false, false, false, 10, 10, "")
@@ -852,12 +879,17 @@ function InitTrig_Comandos_Economia takes nothing returns nothing
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-oro ", false)
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-madera ", false)
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-fondo ", false) // petición de oro
-            call TriggerRegisterPlayerChatEvent(t, Player(i), "-ok", true)      // aportar (coincidencia exacta)
+            call TriggerRegisterPlayerChatEvent(t, Player(i), "-f ", false)     // alias corto de -fondo
+            call TriggerRegisterPlayerChatEvent(t, Player(i), "-ok", true)      // comando historico (coincidencia exacta)
+            // Listener contextual: recibe cualquier chat, pero su accion solo acepta
+            // un "ok" completo mientras Eco_Req_Active siga encendido para el equipo.
+            call TriggerRegisterPlayerChatEvent(bareOk, Player(i), "", false)
         endif
         set i = i + 1
     endloop
 
     call TriggerAddAction(t, function Trig_Comandos_Economia_Actions)
+    call TriggerAddAction(bareOk, function Eco_HandleBareOkChat)
 
     // Sembrar la línea base del poller F11 con el oro inicial y arrancar el
     // sondeo periódico. (El primer tick refresca la base de todos modos, así que
@@ -884,4 +916,5 @@ function InitTrig_Comandos_Economia takes nothing returns nothing
     call TriggerAddAction(t, function Eco_OnItemPawned)
 
     set t = null
+    set bareOk = null
 endfunction

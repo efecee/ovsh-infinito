@@ -33,10 +33,10 @@ function Trig_Deny_Actions takes nothing returns nothing
 
             // 3. FILTRO DE VISIBILIDAD LOCAL (La magia ocurre aquí)
             // Por defecto, CreateTextTag lo hace visible. Ahora lo restringimos.
-            // La función IsUnitAlly devuelve true si el 'killer' considera aliado al 'GetLocalPlayer'.
-            // Esto incluye al propio jugador dueño del killer y a sus compañeros de equipo.
+            // IsUnitAlly usa el POV observado en replay y el jugador local en
+            // partida normal. Incluye al dueño del killer y a sus compañeros.
 
-            call SetTextTagVisibility(tag, IsUnitAlly(killer, GetLocalPlayer()))
+            call SetTextTagVisibility(tag, IsUnitAlly(killer, GetReplayPlayerCached()))
 
         endif
 

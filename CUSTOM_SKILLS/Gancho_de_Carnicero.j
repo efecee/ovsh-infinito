@@ -97,25 +97,25 @@ function Hook_GetMaxDistance takes integer level returns real
     if (level == 1) then
         return 650.00 //650 original
     elseif (level == 2) then
-        return 728.00
+        return 739.00
     elseif (level == 3) then
-        return 806.00
+        return 828.00
     elseif (level == 4) then
-        return 883.00
+        return 917.00
     elseif (level == 5) then
-        return 961.00
+        return 1006.00
     elseif (level == 6) then
-        return 1039.00
+        return 1094.00
     elseif (level == 7) then
-        return 1117.00
+        return 1183.00
     elseif (level == 8) then
-        return 1194.00
-    elseif (level == 9) then
         return 1272.00
+    elseif (level == 9) then
+        return 1361.00
     elseif (level == 10) then
-        return 1350.00
+        return 1450.00 //1550 original
     endif
-    return 1350.00
+    return 1450.00
 endfunction
 
 // --- DAÑO DE IMPACTO AL ENGANCHAR (por nivel, 10 niveles) ---
@@ -202,7 +202,7 @@ endfunction
 // Otros: "CLPB" (azul grueso, animado), "FORK" (bifurcado),
 //        "DRAM" (drain mana, azul-morado), "SPLK" (spirit link alt).
 function Hook_GetLightningType takes nothing returns string
-    return "LEAS"
+    return "DRAM"
 endfunction
 
 // Velocidad de desvanecimiento del rastro (trail) durante retracción.

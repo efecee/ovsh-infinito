@@ -49,6 +49,25 @@ function AB_GetUnitAt takes integer uid, real x, real y returns unit
     return found
 endfunction
 
+// Activa permanentemente la variante de animacion "work" en todas las
+// unidades colocadas en el mapa que coincidan con el rawcode indicado.
+function AB_EnableWorkAnimation takes integer uid returns nothing
+    local group g = CreateGroup()
+    local unit u
+    call GroupEnumUnitsInRect(g, bj_mapInitialPlayableArea, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        if GetUnitTypeId(u) == uid then
+            call AddUnitAnimationProperties(u, "work", true)
+        endif
+        call GroupRemoveUnit(g, u)
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    set u = null
+endfunction
+
 // Captura unidad, agrega al grupo. Si protect=true: invulnerable + tinte visual sutil.
 function AB_Capture takes group g, integer uid, real x, real y, boolean protect returns nothing
     local unit u = AB_GetUnitAt(uid, x, y)
@@ -174,7 +193,7 @@ function AB_CheckHumF1 takes nothing returns nothing
         set AB_HUM_F1_Open = true
         call AB_UnlockGroup(AB_HUM_F1)
         call AB_PlayFactionSound(0)
-        call DisplayTextToForce(GetPlayersAll(), "La guerra ha llegado a la |cff3399FFultima linea|r de defensa |cff3399FFHumana|r.")
+        call Replay_DisplayTextToAll("La guerra ha llegado a la |cff3399FFultima linea|r de defensa |cff3399FFHumana|r.")
     endif
 endfunction
 
@@ -186,7 +205,7 @@ function AB_CheckOrcF1 takes nothing returns nothing
         set AB_ORC_F1_Open = true
         call AB_UnlockGroup(AB_ORC_F1)
         call AB_PlayFactionSound(1)
-        call DisplayTextToForce(GetPlayersAll(), "La guerra ha llegado a la |cffFF3333ultima linea|r de defensa |cffFF3333Orca|r.")
+        call Replay_DisplayTextToAll("La guerra ha llegado a la |cffFF3333ultima linea|r de defensa |cffFF3333Orca|r.")
     endif
 endfunction
 
@@ -206,7 +225,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             set AB_HUM_F2Top_Open = true
             call AB_UnlockGroup(AB_HUM_F2_TOP)
             call AB_PlayFactionSound(0)
-            call DisplayTextToForce(GetPlayersAll(), "El |cff3399FFnorte|r ha caido, segunda linea |cff3399FFHumana|r vulnerable.")
+            call Replay_DisplayTextToAll("El |cff3399FFnorte|r ha caido, segunda linea |cff3399FFHumana|r vulnerable.")
         endif
         set dying = null
         return
@@ -219,7 +238,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             set AB_HUM_F2Bot_Open = true
             call AB_UnlockGroup(AB_HUM_F2_BOT)
             call AB_PlayFactionSound(0)
-            call DisplayTextToForce(GetPlayersAll(), "El |cff3399FFsur|r ha caido, segunda linea |cff3399FFHumana|r vulnerable.")
+            call Replay_DisplayTextToAll("El |cff3399FFsur|r ha caido, segunda linea |cff3399FFHumana|r vulnerable.")
         endif
         set dying = null
         return
@@ -253,7 +272,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             call AB_UnlockGroup(AB_HUM_F0)
             call UnitRemoveAbility(udg_unit19, 'A032')
             call AB_PlaySound(AB_SND_GameFound, 127)
-            call DisplayTextToForce(GetPlayersAll(), "|cff3399FFEL CASTILLO AHORA ES VULNERABLE!|r")
+            call Replay_DisplayTextToAll("|cff3399FFEL CASTILLO AHORA ES VULNERABLE!|r")
         endif
         set dying = null
         return
@@ -266,7 +285,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             set AB_ORC_F2Top_Open = true
             call AB_UnlockGroup(AB_ORC_F2_TOP)
             call AB_PlayFactionSound(1)
-            call DisplayTextToForce(GetPlayersAll(), "El |cffFF3333norte|r ha caido, segunda linea |cffFF3333Orca|r vulnerable.")
+            call Replay_DisplayTextToAll("El |cffFF3333norte|r ha caido, segunda linea |cffFF3333Orca|r vulnerable.")
         endif
         set dying = null
         return
@@ -279,7 +298,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             set AB_ORC_F2Bot_Open = true
             call AB_UnlockGroup(AB_ORC_F2_BOT)
             call AB_PlayFactionSound(1)
-            call DisplayTextToForce(GetPlayersAll(), "El |cffFF3333sur|r ha caido, segunda linea |cffFF3333Orca|r vulnerable.")
+            call Replay_DisplayTextToAll("El |cffFF3333sur|r ha caido, segunda linea |cffFF3333Orca|r vulnerable.")
         endif
         set dying = null
         return
@@ -313,7 +332,7 @@ function AB_OnStructureDeath takes nothing returns nothing
             call AB_UnlockGroup(AB_ORC_F0)
             call UnitRemoveAbility(udg_unit24, 'A032')
             call AB_PlaySound(AB_SND_GameFound, 127)
-            call DisplayTextToForce(GetPlayersAll(), "|cffFF3333LA FORTALEZA AHORA ES VULNERABLE!|r")
+            call Replay_DisplayTextToAll("|cffFF3333LA FORTALEZA AHORA ES VULNERABLE!|r")
         endif
         set dying = null
         return
@@ -463,6 +482,10 @@ function AB_PopulateGroups takes nothing returns nothing
     call AddUnitAnimationProperties(udg_unit26, "work", true)  // uslh
     call AddUnitAnimationProperties(udg_unit27, "work", true)  // usep
     call AddUnitAnimationProperties(udg_unit28, "work", true)  // otto
+
+    // === ANIMACION "WORK" PERMANENTE EN MERCADOS GOBLIN ===
+    // Se aplica por rawcode para alcanzar las dos copias colocadas en el mapa.
+    call AB_EnableWorkAnimation('ngme')  // Mercado goblin
 endfunction
 
 // ===================== TRIGGER INIT =====================

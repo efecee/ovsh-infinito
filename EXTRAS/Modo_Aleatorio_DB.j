@@ -574,7 +574,8 @@ library ModoAleatorio initializer OnInit
         call RegisterAbil('A046', SLOT_E)  // Vista Lejana — Goblin Techies
         call RegisterAbil('A05P', SLOT_E)  // Speed Bonus — Magnadefender
         call RegisterAbil('A038', SLOT_E)  // Defensa Mágica — Darth'Remar
-        call RegisterAbil('AOsf', SLOT_E)  // Espíritu Salvaje — Vidente
+        //call RegisterAbil('AOsf', SLOT_E)  // Espíritu Salvaje — Vidente [DESACTIVADA: reemplazada por Tanque Salvaje]
+        call RegisterAbil('A02U', SLOT_E)  // Tanque Salvaje — Vidente
         call RegisterAbil('AOae', SLOT_E)  // Aura de Resistencia — Jefe Tauren
         call RegisterAbil('AOsw', SLOT_E)  // Totem Serpiente — Cazador de Sombras
         call RegisterAbil('AUau', SLOT_E)  // Aura Impía — Caballero de la Muerte

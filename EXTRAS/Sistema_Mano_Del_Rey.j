@@ -347,11 +347,20 @@ library ItemManoDelRey initializer OnInit
     // del cambio de portador: recoger del suelo o recibirlo de un aliado NO anuncia.
     // El booleano es la garantia dura por si la venta llegara a dispararse dos veces.
     private function Announce takes nothing returns nothing
+        local integer i = 0
         if (Announced) then
             return
         endif
         set Announced = true
-        call DisplayTimedTextToForce(GetPlayersAll(), MDR_ANNOUNCE_TIME, MDR_ANNOUNCE_MSG)
+        // No usar DisplayTimedTextToForce aqui: ese BJ resuelve el destinatario
+        // con GetLocalPlayer(), que no cambia al alternar el POV de un replay.
+        // El envio explicito mantiene una sola copia por cliente en partida normal
+        // y deja disponible la copia correspondiente a cada POV en la repeticion.
+        loop
+            exitwhen i > MDR_LAST_PLAYER
+            call DisplayTimedTextToPlayer(Player(i), 0, 0, MDR_ANNOUNCE_TIME, MDR_ANNOUNCE_MSG)
+            set i = i + 1
+        endloop
     endfunction
 
     //=======================================================================

@@ -1,15 +1,19 @@
 //===========================================================================
 // SISTEMA: KILL FEED (ANUNCIOS DE MUERTE HUMILLANTES)
 // Versión: Victima Primero | Nombres de Jugador | Texto Blanco
-// + Registro Histórico de Bajas en F9 (Ring Buffer de 20 entradas)
+// + Registro Histórico de Bajas en F9 (Ring Buffer de 35 entradas)
+// + Resumen lateral al terminar la partida (últimas 10 bajas)
 //===========================================================================
 
 globals
     // --- REGISTRO F9: Quest y Ring Buffer ---
     quest    KF_Quest       = null   // Pestaña del F9 ("Registro de Bajas")
-    string array KF_Log            // Ring buffer: últimas 20 entradas
+    string array KF_Log            // Ring buffer del F9: últimas 35 entradas
+    string array KF_FinalLog       // Mismo ring buffer, formato compacto para el final
     integer  KF_LogCount   = 0      // Total de kills registradas (crece sin límite)
     integer  KF_LogMax     = 35     // Capacidad máxima visible en F9
+    constant integer KF_FINAL_MAX = 10
+    constant real    KF_FINAL_DUR = 99999.0
 endglobals
 
 // --- 1. COLORES DE JUGADORES ---
@@ -124,7 +128,7 @@ function KF_RebuildDescription takes nothing returns nothing
     local integer idx = 0
 
     // Si hay menos de KF_LogMax entradas, empezar desde 0
-    // Si hay más, empezar desde (total - KF_LogMax) para mostrar las últimas 20
+    // Si hay más, empezar desde (total - KF_LogMax) para mostrar las últimas 35
     if (total > KF_LogMax) then
         set start = total - KF_LogMax
     endif
@@ -158,18 +162,58 @@ function KF_RegisterKill takes string sVictimName, string sKillerName returns no
     local string timestamp = KF_GetTimestamp()
     local integer slot = 0
     local string entry = ""
+    local string finalEntry = ""
 
     // Construir la línea del log
     // Formato: "[MM:SS] => Victima asesinado por Killer"
     set entry = "|cffFFCC00" + timestamp + "|r |cffFFCC00=>|r " + sVictimName + " |cffFFFFFFasesinado por|r " + sKillerName
+    // Formato final minimalista: "Killer > Victima (MM:SS)"
+    set finalEntry = sKillerName + " |cff888888>|r " + sVictimName + " |cffFFCC00(" + timestamp + ")|r"
 
     // Calcular slot circular: KF_LogCount mod KF_LogMax
     set slot = KF_LogCount - (KF_LogCount / KF_LogMax) * KF_LogMax
     set KF_Log[slot] = entry
+    set KF_FinalLog[slot] = finalEntry
     set KF_LogCount = KF_LogCount + 1
 
     // Reconstruir texto del F9
     call KF_RebuildDescription()
+endfunction
+
+// --- FINAL DE PARTIDA: CONSTRUIR REGISTRO LATERAL COMPACTO ---
+// Muestra como máximo las últimas 10 bajas: la más nueva arriba y la más antigua abajo.
+function KF_BuildFinalLog takes nothing returns string
+    local integer total = KF_LogCount
+    local integer start = 0
+    local integer i = 0
+    local integer idx = 0
+    local string report = "|cffFFCC00========== ÚLTIMAS 10 BAJAS ==========|r"
+
+    if (total <= 0) then
+        return report + "\n|cff888888Sin bajas registradas.|r\n|cffFFCC00=========================================|r"
+    endif
+
+    if (total > KF_FINAL_MAX) then
+        set start = total - KF_FINAL_MAX
+    endif
+
+    // Recorrer hacia atrás: la baja más reciente queda visualmente arriba.
+    set i = total - 1
+    loop
+        exitwhen i < start
+        set idx = i - (i / KF_LogMax) * KF_LogMax
+        set report = report + "\n" + KF_FinalLog[idx]
+        set i = i - 1
+    endloop
+
+    set report = report + "\n|cffFFCC00======================================|r"
+    return report
+endfunction
+
+// Entrada pública sin parámetros para invocarla con ExecuteFunc desde
+// Sistema_Victoria sin depender del orden de los detonadores en el mapa.
+function KF_DisplayFinalLog takes nothing returns nothing
+    call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, KF_FINAL_DUR, KF_BuildFinalLog())
 endfunction
 
 // --- HELPER: Obtener el héroe de un jugador ---
@@ -194,6 +238,20 @@ function KF_GetPlayerHero takes player p returns unit
     set g = null
     set u = null
     return hero
+endfunction
+
+// --- HELPER: Mostrar un aviso global compatible con repeticiones ---
+// DisplayTimedTextToForce termina resolviendo el destinatario mediante
+// GetLocalPlayer(), que en una repeticion no sigue el POV seleccionado.
+// Enviar el mismo aviso a cada slot conserva una sola copia por cliente en
+// partida normal y permite que el replay muestre la del jugador observado.
+function KF_DisplayTimedTextToAll takes real duration, string message returns nothing
+    local integer i = 0
+    loop
+        exitwhen i > 9
+        call DisplayTimedTextToPlayer(Player(i), 0, 0, duration, message)
+        set i = i + 1
+    endloop
 endfunction
 
 // --- 3. ACCIONES PRINCIPALES ---
@@ -244,7 +302,7 @@ function Trig_Anuncios_Kill_Actions takes nothing returns nothing
             set finalMsg = GetRandomKillMessage(sVictimName, sKillerName)
             
             // 6. MOSTRAR A TODOS
-            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 7.0, finalMsg)
+            call KF_DisplayTimedTextToAll(7.0, finalMsg)
             
             // 7. SONIDO ORIGINAL (NO PERDERLO)
             // Usamos tu variable global de sonido udg_sound02
@@ -263,6 +321,7 @@ endfunction
 
 //===========================================================================
 function InitTrig_Sistema_Anuncios takes nothing returns nothing
+    local questitem qi = null
     set gg_trg_Sistema_Anuncios = CreateTrigger()
     call TriggerRegisterAnyUnitEventBJ(gg_trg_Sistema_Anuncios, EVENT_PLAYER_UNIT_DEATH)
     call TriggerAddAction(gg_trg_Sistema_Anuncios, function Trig_Anuncios_Kill_Actions)
@@ -273,9 +332,13 @@ function InitTrig_Sistema_Anuncios takes nothing returns nothing
     set KF_Quest = CreateQuest()
     call QuestSetTitle(KF_Quest, "Registro de Bajas")
     call QuestSetDescription(KF_Quest, "|cff888888Aún no se registran bajas.|r")
+    set qi = QuestCreateItem(KF_Quest)
+    call QuestItemSetDescription(qi, "|cffFFCC00ULTIMAS BAJAS DE HEROES REGISTRADAS DURANTE LA PARTIDA.|r")
+    call QuestItemSetCompleted(qi, false)
     call QuestSetIconPath(KF_Quest, "ReplaceableTextures\\CommandButtons\\BTNOrbOfDeath.blp")
     call QuestSetRequired(KF_Quest, false)    // false = "Optional" → sección inferior del F9
     call QuestSetDiscovered(KF_Quest, true)   // Visible desde el inicio
     call QuestSetCompleted(KF_Quest, false)    // Nunca se "completa"
     call QuestSetEnabled(KF_Quest, true)       // Habilitada
+    set qi = null
 endfunction

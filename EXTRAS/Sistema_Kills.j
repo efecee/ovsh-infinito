@@ -6,13 +6,13 @@
 //   - Sistema_Anuncios.j (Kill_GetColor)
 //
 // ─────────────────────────────────────────────────────────────────────────
-// SISTEMA A: MULTI-KILL (ventana de 25s desde la ÚLTIMA kill)
-//   Cuenta kills rápidas consecutivas. El timer se reinicia en cada kill.
+// SISTEMA A: MULTI-KILL (ventana dinámica: base 25s + 5s por kill, máximo 40s)
+//   Cuenta kills rápidas consecutivas. El timer se reinicia en cada kill y se topa al llegar a Rampage.
 //   mk=1 → Excellent      (kill normal, suena siempre)
-//   mk=2 → Double Kill
-//   mk=3 → Triple Kill
-//   mk=4 → Ultra Kill
-//   mk=5 → Rampage        (máximo posible en un 5v5)
+//   mk=2 → Double Kill    (requiere kill dentro de 25s)
+//   mk=3 → Triple Kill    (requiere kill dentro de 30s)
+//   mk=4 → Ultra Kill     (requiere kill dentro de 35s)
+//   mk=5 → Rampage        (requiere kill dentro de 40s)
 //
 // SISTEMA B: RACHA (kills seguidas sin morir — independiente del timer)
 //   Solo suena en los umbrales exactos.
@@ -24,7 +24,7 @@
 //   *Matar a alguien con racha >= 7 → Holy Shit
 //
 // AMBOS SISTEMAS SON INDEPENDIENTES y pueden sonar al mismo tiempo.
-// Ejemplo: kill #3 en racha + 3ª en 25s → Killing Spree + Triple Kill.
+// Ejemplo: kill #3 en racha + 3ª en ventana → Killing Spree + Triple Kill.
 //
 // REGLAS DE PRIORIDAD DE SONIDO (por kill):
 //   1. First Blood           → solo firstblood.mp3, nada más.
@@ -37,6 +37,11 @@
 //===========================================================================
 
 globals
+    // --- CONFIGURACIÓN DE MULTI-KILL ---
+    constant real KS_MULTIKILL_BASE_WINDOW = 25.0 // Ventana base (segundos) tras la primera kill
+    constant real KS_MULTIKILL_BONUS_STEP  = 5.0  // Segundos extra agregados por cada kill consecutiva
+    constant real KS_MULTIKILL_MAX_WINDOW  = 40.0 // Tope alcanzado al llegar a Rampage
+
     // --- SONIDOS (Persistentes — patrón tabla.j, nunca se destruyen) ---
     sound KS_Snd_Excellent    = null  // Kill básica (mk=1), reemplaza al drexcelent
     sound KS_Snd_FirstBlood   = null
@@ -139,6 +144,7 @@ function KS_OnHeroDeath takes nothing returns nothing
     local integer pidV
     local integer pidK
     local real currentTime
+    local real window
     local boolean isFirstBlood = false
     local boolean streakSounded = false
 
@@ -211,11 +217,20 @@ function KS_OnHeroDeath takes nothing returns nothing
         call SaveInteger(udg_MB_Hash, 999, 0, pidK + 1)
     endif
 
-    // --- E) Multi-Kill (ventana de 25s desde la ÚLTIMA kill del asesino) ---
-    if (KS_LastKillTime[pidK] > 0.0 and (currentTime - KS_LastKillTime[pidK]) <= 25.0) then
+    // --- E) Multi-Kill (ventana dinámica: base + 5s por kill, hasta el tope de Rampage) ---
+    if (KS_MultiKill[pidK] >= 1) then
+        set window = KS_MULTIKILL_BASE_WINDOW + I2R(KS_MultiKill[pidK] - 1) * KS_MULTIKILL_BONUS_STEP
+        if (window > KS_MULTIKILL_MAX_WINDOW) then
+            set window = KS_MULTIKILL_MAX_WINDOW
+        endif
+    else
+        set window = KS_MULTIKILL_BASE_WINDOW
+    endif
+
+    if (KS_LastKillTime[pidK] > 0.0 and (currentTime - KS_LastKillTime[pidK]) <= window) then
         set KS_MultiKill[pidK] = KS_MultiKill[pidK] + 1
     else
-        set KS_MultiKill[pidK] = 1  // Primera kill de una nueva ventana
+        set KS_MultiKill[pidK] = 1  // Primera kill de una nueva ventana o racha expirada
     endif
     set KS_LastKillTime[pidK] = currentTime
 

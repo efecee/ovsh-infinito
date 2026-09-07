@@ -221,9 +221,9 @@ function SF_ActivateHuman takes nothing returns nothing
     call ForGroup(AB_HUM_F3_TOP, function SF_AddShield_Hum)
     call ForGroup(AB_HUM_F3_BOT, function SF_AddShield_Hum)
     // aviso global (lo leen todos por igual)
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, SF_SEP_HUM)
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, "|cff66B3FFSELLO HUMANO ACTIVADO!|r")
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, SF_SEP_HUM)
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, SF_SEP_HUM)
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, "|cff66B3FFSELLO HUMANO ACTIVADO!|r")
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, SF_SEP_HUM)
     // timer reutilizado (no se recrea por uso) -> sin fuga de handles
     if SF_HUM_Timer == null then
         set SF_HUM_Timer = CreateTimer()
@@ -251,9 +251,9 @@ function SF_ActivateOrc takes nothing returns nothing
     call ForGroup(AB_ORC_F2_BOT, function SF_AddShield_Orc)
     call ForGroup(AB_ORC_F3_TOP, function SF_AddShield_Orc)
     call ForGroup(AB_ORC_F3_BOT, function SF_AddShield_Orc)
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, SF_SEP_ORC)
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, "|cffFF3333SELLO ORCO ACTIVADO!|r")
-    call DisplayTimedTextToForce(GetPlayersAll(), AB_GLYPH_DURATION - 1.0, SF_SEP_ORC)
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, SF_SEP_ORC)
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, "|cffFF3333SELLO ORCO ACTIVADO!|r")
+    call Replay_DisplayTimedTextToAll(AB_GLYPH_DURATION - 1.0, SF_SEP_ORC)
     if SF_ORC_Timer == null then
         set SF_ORC_Timer = CreateTimer()
     endif

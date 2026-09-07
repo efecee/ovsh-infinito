@@ -1,5 +1,5 @@
 //===========================================================================
-// COMANDO: -aliados
+// COMANDO: -aliados / -al
 // Muestra el oro actual de cada aliado activo del jugador que usa el comando.
 // El reporte es privado: solo se envia al jugador que lo solicito.
 //===========================================================================
@@ -60,6 +60,7 @@ scope ComandoAliados initializer Init
         loop
             exitwhen i > 9
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-aliados", true)
+            call TriggerRegisterPlayerChatEvent(t, Player(i), "-al", true)
             set i = i + 1
         endloop
 

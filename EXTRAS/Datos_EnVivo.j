@@ -19,12 +19,16 @@
 // COMANDOS:
 //   -hud    ? Activa/Desactiva el HUD
 // ==========================================================================
+// DEPENDENCIA: ReplayPOVDetection (Replay_POV.j).
 scope DatosEnVivo initializer Init
 
     globals
         private timer   HUD_Timer       = null
         private integer HUD_TickCount   = 0
         private integer HUD_DetectCount = 0
+        // En juego normal siempre equivale al jugador local. En replay se
+        // refresca cada ~0.51s para seguir el POV seleccionado.
+        private integer HUD_ViewerPid   = 0
         private boolean HUD_AllDetected = false  // true = todos los humanos tienen heroe, dejar de buscar
 
         // === AJUSTABLES ===
@@ -167,7 +171,7 @@ scope DatosEnVivo initializer Init
             call SetTextTagText(HUD_Tag[pid], "...", HUD_BASE_TEXT_SIZE)
         endif
 
-        if GetLocalPlayer() == Player(pid) then
+        if HUD_ViewerPid == pid then
             set camX = GetCameraTargetPositionX()
             set camY = GetCameraTargetPositionY()
             set camDist = GetCameraField(CAMERA_FIELD_TARGET_DISTANCE)
@@ -308,6 +312,7 @@ scope DatosEnVivo initializer Init
         set updateContent = (HUD_TickCount >= 17)
         if updateContent then
             set HUD_TickCount = 0
+            set HUD_ViewerPid = GetPlayerId(GetReplayPlayerCached())
         endif
 
         // Deteccion: solo si aun faltan jugadores por detectar
@@ -338,7 +343,7 @@ scope DatosEnVivo initializer Init
                     call Reposition(pid)
                 else
                     // Heroe muerto: ocultar texttag
-                    if GetLocalPlayer() == Player(pid) then
+                    if HUD_ViewerPid == pid then
                         if HUD_Tag[pid] != null then
                             call SetTextTagVisibility(HUD_Tag[pid], false)
                         endif
@@ -381,6 +386,8 @@ scope DatosEnVivo initializer Init
     private function Init takes nothing returns nothing
         local trigger tHud = CreateTrigger()
         local integer i = 0
+
+        set HUD_ViewerPid = GetPlayerId(GetLocalPlayer())
 
         loop
             exitwhen i > 9

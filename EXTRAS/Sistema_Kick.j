@@ -151,7 +151,7 @@ function Trig_Sistema_Kick_Actions takes nothing returns nothing
             if (LoadBoolean(udg_MB_Hash, id, 102) == true) then
 
                 // Aviso
-                call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, Kick_GetColor(target) + GetPlayerName(target) + "|r ha sido expulsado.")
+                call Replay_DisplayTimedTextToAll(5.0, Kick_GetColor(target) + GetPlayerName(target) + "|r ha sido expulsado.")
 
                 // Soltar items en base + eliminar unidades
                 set locationID = GetPlayerStartLocation(target)
@@ -222,7 +222,7 @@ function Trig_Sistema_Kick_Actions takes nothing returns nothing
             call SaveBoolean(udg_MB_Hash, id, 103, true) // Marca: Fila atenuada
             
             // --- [RESTITUIDO] AVISO DE TEXTO AL PÚBLICO ---
-            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, Kick_GetColor(target) + GetPlayerName(target) + "|r ha sido expulsado de la partida.")
+            call Replay_DisplayTimedTextToAll(5.0, Kick_GetColor(target) + GetPlayerName(target) + "|r ha sido expulsado de la partida.")
             
             // --- PASO B: ATENUAR FILA EN LA TABLA (Nombre + K/D/A en gris) ---
             // (Inlineado aquí porque Sistema_Kick compila antes que tabla.j)

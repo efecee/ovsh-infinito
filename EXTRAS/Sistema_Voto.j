@@ -30,7 +30,7 @@
 //   - udg_MB_Hash (hashtable de tabla.j): flags de procesamiento
 //===========================================================================
 
-library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
+library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOVDetection
 
     // ==========================================================
     // CONSTANTES
@@ -118,7 +118,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         private integer array Voto_Votos       // [playerId] = VOTE_*
         private integer       Voto_Emitidos    = 0
         private integer       Voto_Validos     = 0  // votantes válidos
-        
+
         // Caso 1 vs Caso 2: ¿algún desertor tiene héroe?
         private boolean       Voto_AnyHeroDesertor = false
         // Equipo del primer abandono que abrió este ciclo de votación.
@@ -440,11 +440,12 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
 
     // Loop del banner (timer BANNER_UPDATE_INTERVAL). Por cada slot:
     //   - Crea su texttag SIMÉTRICAMENTE en todos los clientes (paridad de
-    //     handles ? sin desync). Solo el cliente DUEÑO lo posiciona/muestra.
+    //     handles ? sin desync). Solo el cliente/POV correspondiente lo muestra.
     //   - Lo ve únicamente quien YA votó y mientras la votación siga abierta
     //     (al último votante nunca le aparece: su clic resuelve en el acto).
     private function Voto_BannerLoop takes nothing returns nothing
         local integer pid    = 0
+        local integer viewer = GetPlayerId(GetReplayPlayerCached())
         local boolean active = (Voto_State == 2)
         local string  txt    = ""
         local real    camX
@@ -465,8 +466,8 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
             endif
 
             // Mostrar SOLO si: votación activa, es votante válido, YA votó, y
-            // este es su propio cliente. El resto de combinaciones ? oculto.
-            if (active and Voto_IsValidVoter(pid) and Voto_Votos[pid] != VOTE_NONE and GetLocalPlayer() == Player(pid)) then
+            // este es su cliente o el POV observado. El resto ? oculto.
+            if (active and Voto_IsValidVoter(pid) and Voto_Votos[pid] != VOTE_NONE and viewer == pid) then
                 set camX = GetCameraTargetPositionX()
                 set camY = GetCameraTargetPositionY()
                 set zoom = GetCameraField(CAMERA_FIELD_TARGET_DISTANCE) / BANNER_DEFAULT_ZOOM
@@ -685,7 +686,9 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
                 exitwhen j > 9
                 if (Voto_IsAllyOfDeserter(j, id) and share > 0) then
                     call SetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(Player(j), PLAYER_STATE_RESOURCE_GOLD) + share)
-                    if (not silent and GetPlayerController(Player(j)) == MAP_CONTROL_USER) then
+                    // Incluso en el DROP automatico silencioso, cada heredero
+                    // humano conserva un unico aviso con el oro recibido.
+                    if (GetPlayerController(Player(j)) == MAP_CONTROL_USER) then
                         call DisplayTimedTextToPlayer(Player(j), 0, 0, 10.0, "Recibes |cffFFCC00+" + I2S(share) + "|r de oro.")
                     endif
                 endif
@@ -790,7 +793,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         call Voto_EjecutarContinuar(VOTE_BOT, false)
     endfunction
 
-    // silent=true conserva el DROP automático y sin mensajes de F0 vulnerable.
+    // silent=true omite el resultado general; el aviso individual de oro se conserva.
     private function Voto_EjecutarDrop takes boolean silent returns nothing
         call Voto_EjecutarContinuar(VOTE_DROP, silent)
     endfunction
@@ -828,10 +831,10 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
 
     // Inicia el timer para RMK (0.0s = siguiente tick del motor, seguro)
     private function Voto_EjecutarRmk takes nothing returns nothing
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 15.0, VOTO_SEP)
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 15.0, "Resultado: |cffFF4444RMK|r")
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 15.0, "Partida cancelada. Expulsando...")
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 15.0, VOTO_SEP)
+        call Replay_DisplayTimedTextToAll(15.0, VOTO_SEP)
+        call Replay_DisplayTimedTextToAll(15.0, "Resultado: |cffFF4444RMK|r")
+        call Replay_DisplayTimedTextToAll(15.0, "Partida cancelada. Expulsando...")
+        call Replay_DisplayTimedTextToAll(15.0, VOTO_SEP)
 
         set Voto_TimerRmk = CreateTimer()
         call TimerStart(Voto_TimerRmk, RMK_DELAY, false, function Voto_EjecutarRmk_Callback)
@@ -950,7 +953,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         call StartSound(Voto_SndResult)
 
         // Ejecutar resultado (línea en blanco separa votos del resultado)
-        call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 7.0, " ")
+        call Replay_DisplayTimedTextToAll(7.0, " ")
         if (winner == VOTE_BOT) then
             call Voto_EjecutarBot()
         elseif (winner == VOTE_DROP) then
@@ -995,7 +998,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
             set Voto_Emitidos = Voto_Emitidos + 1
 
             // Anunciar al público
-            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 7.0, Voto_GetColor(p) + GetPlayerName(p) + "|r ha votado por: " + Voto_GetVoteName(vote))
+            call Replay_DisplayTimedTextToAll(7.0, Voto_GetColor(p) + GetPlayerName(p) + "|r ha votado por: " + Voto_GetVoteName(vote))
 
             // ¿Votaron TODOS los válidos? ? Resolver de inmediato.
             // Los AFK ya no bloquean: si alguno no vota, el timer de 8s
@@ -1010,14 +1013,15 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
     endfunction
 
     // ==========================================================
-    // ¿Fase 0 (castillo o fortaleza) vulnerable?
+    // ¿Fase 2 completa (norte y sur) vulnerable en alguna facción?
     // ==========================================================
     // Lee los booleanos globales del anti-backdoor (Sistema_AntiBackdoor.j):
-    // pasan a true cuando cae por completo la F1 de esa facción y su F0
-    // (castillo 'hcas' / fortaleza 'ofrt') queda atacable. Basta con que UNA
-    // facción tenga su F0 abierta: la partida está por definirse.
-    private function Voto_F0Vulnerable takes nothing returns boolean
-        return AB_HUM_F0_Open or AB_ORC_F0_Open
+    // cada uno pasa a true cuando cae por completo la F3 de su carril y la F2
+    // correspondiente queda atacable. Un solo carril abierto NO basta: norte
+    // y sur deben estar abiertos para la misma facción. No hace falta que las
+    // dos facciones cumplan la condición; con una sola es suficiente.
+    private function Voto_F2Vulnerable takes nothing returns boolean
+        return (AB_HUM_F2Top_Open and AB_HUM_F2Bot_Open) or (AB_ORC_F2Top_Open and AB_ORC_F2Bot_Open)
     endfunction
 
     // ==========================================================
@@ -1235,17 +1239,17 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
         set Voto_NumDesertores = Voto_NumDesertores + 1
         call Voto_RefreshAnyHeroDesertor()
 
-        // --- FASE 0 VULNERABLE: DROP automático, sin encuesta y SIN MENSAJES ---
-        // Si el castillo/fortaleza (F0) de CUALQUIER facción ya está
-        // desbloqueado, la partida está por definirse: no interrumpimos con la
-        // votación NI con textos propios (silent=true). Queda solo el aviso de
-        // abandono estándar de tabla.j/Sistema_Kick; el efecto DROP (items,
-        // oro) se aplica completo en silencio, reutilizando
+        // --- FASE 2 COMPLETA VULNERABLE: DROP automático, sin encuesta ---
+        // Si F2 norte Y F2 sur de CUALQUIER facción ya están desbloqueadas,
+        // no interrumpimos con la votación ni con el resultado general.
+        // Un solo carril F2 vulnerable no activa esta omisión. Solo quedan el
+        // aviso estándar de abandono y "Recibes +X de oro" para cada heredero;
+        // el efecto DROP (items, oro) se aplica completo, reutilizando
         // Voto_EjecutarDrop para heredar sin duplicar cualquier cambio futuro
         // de la lógica de DROP.
         // Guarda != 2: si un voto ya estaba abierto (empezó antes de que cayera
-        // la F1), lo dejamos resolver por su vía normal en vez de pisarlo.
-        if (Voto_F0Vulnerable() and Voto_State != 2) then
+        // la segunda F3 requerida), lo dejamos resolver por su vía normal.
+        if (Voto_F2Vulnerable() and Voto_State != 2) then
             call Voto_EjecutarDrop(true)
             call Voto_Reset()
             return
@@ -1271,7 +1275,7 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio
             // VOTING ? recontar votantes válidos (el que se fue ya no cuenta) y
             // re-chequear el cierre: si era el voto que faltaba, resolver ya en
             // vez de esperar el timer. En SP es no-op (los que se van son bots).
-            call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 5.0, "|cffFFCC00[SISTEMA]|r Otro jugador abandonó.")
+            call Replay_DisplayTimedTextToAll(5.0, "|cffFFCC00[SISTEMA]|r Otro jugador abandonó.")
             // Si ya había votado, retirar ese voto: al abandonar deja de ser
             // votante válido y tampoco debe provocar un cierre anticipado falso.
             if (Voto_Votos[id] != VOTE_NONE) then
