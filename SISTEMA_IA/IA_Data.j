@@ -358,7 +358,7 @@ library IAData initializer OnInit requires IADataItems
         // 11 [H] Alquimista pandaren
         call RegisterHeroStats(       'Npbm', 2.0, 0.0, 2, 6, 100.0, ATTR_STR, true)
         call RegisterHeroAttributes(  'Npbm', 22.0, 14.0, 15.0,   3.0, 1.5, 1.5)
-        call RegisterHeroDynamics(    'Npbm', 0.350, 2.22, 0.0, 270.0, 0.400, 0.500)
+        call RegisterHeroDynamics(    'Npbm', 0.350, 2.22, 0.0, 290.0, 0.400, 0.500)
         
         // 12 [H] Lord Garithos
         call RegisterHeroStats(       'Hlgr', 2.0, 0.0, 2, 6, 100.0, ATTR_STR, true)

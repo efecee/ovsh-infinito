@@ -1,6 +1,6 @@
 //===========================================================================
 // SISTEMA: RASTREO DE ORO (-merito)
-// Héroes: 250 | Barracas: 450 | Torres: 150 | Tanques: 40 | Creeps: 20
+// Héroes: 500 | Barracas: 450 | Torres: 150 | Tanques: 40 | Creeps: 20
 //===========================================================================
 function Trig_Merito_Track_Actions takes nothing returns nothing
     local unit victim = GetDyingUnit()
@@ -15,9 +15,9 @@ function Trig_Merito_Track_Actions takes nothing returns nothing
     //    Excluimos ilusiones: matar una ilusión no debe dar oro de mérito.
     if (killer != null and id <= 9 and IsUnitEnemy(victim, p) and not IsUnitIllusion(victim)) then
         
-        // --- A) HÉROES (250 Oro) ---
+        // --- A) HÉROES (500 Oro) ---
         if (IsUnitType(victim, UNIT_TYPE_HERO)) then
-            set goldGained = 250
+            set goldGained = 500
             
         // --- B) ESTRUCTURAS ---
         elseif (IsUnitType(victim, UNIT_TYPE_STRUCTURE)) then
@@ -52,7 +52,7 @@ function Trig_Merito_Track_Actions takes nothing returns nothing
             set currentTotal = LoadInteger(udg_MB_Hash, id, 3)
             call SaveInteger(udg_MB_Hash, id, 3, currentTotal + goldGained)
             // Sync de la base del detector de oro F11 (Comandos_Economia.j).
-            // El bounty NATIVO de matar es FIJO e IGUAL a estos montos (héroe 250,
+            // El bounty NATIVO de matar es FIJO e IGUAL a estos montos (héroe 500,
             // barraca 450, torre 150, tanque 40, creep 20), así que SUMA exactamente
             // goldGained al asesino. Avanzar la base lo vuelve invisible al sondeo: si
             // el asesino justo recibe (o envía) un regalo F11 en el mismo tick, su

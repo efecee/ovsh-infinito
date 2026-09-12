@@ -7,6 +7,38 @@ globals
     timer MB_ClockTimer = null     // Timer periódico para actualizar el cronómetro visual
     sound MB_Snd_Leave = null      // Sonido global reutilizable para abandonos
     hashtable MB_AoEHash = null    // Contexto de timers diferidos/periódicos (Tier B+C)
+
+    // =====================================================================
+    // ICONOS DE LA TABLA - ZONA EDITABLE
+    // =====================================================================
+    // Cambia estas dos rutas si quieres otro icono provisional por facción.
+    // El ancho del NOMBRE sigue siendo 0.1024; esta columna es independiente.
+    constant real MB_ICON_WIDTH = 0.015
+    constant string MB_ICON_HUMAN_PLACEHOLDER = "ReplaceableTextures\\CommandButtons\\BTNPeasant.blp"
+    constant string MB_ICON_ORC_PLACEHOLDER = "ReplaceableTextures\\CommandButtons\\BTNPeon.blp"
+
+    // Icono para quien abandono SIN elegir heroe. Se muestra recien cuando su
+    // equipo revela los iconos; hasta entonces conserva el provisional de faccion.
+    // Tambien sirve de salvavidas para un heroe nuevo sin ruta registrada.
+    constant string MB_ICON_UNKNOWN = "ReplaceableTextures\\CommandButtons\\BTNnegro.blp"
+
+    // ---------------------------------------------------------------------
+    // SONIDO "EQUIPO LISTO" (EXPERIMENTAL) - ZONA EDITABLE
+    // ---------------------------------------------------------------------
+    // Suena para TODOS (humanos y orcos) una vez por faccion, en el instante en
+    // que esa faccion revela sus iconos: maximo dos veces por partida.
+    // Para desactivarlo basta poner el booleano en false; para probar otro
+    // sonido, cambiar solo la ruta. El revelado de iconos NO depende de esto.
+    constant boolean MB_TEAMREADY_SOUND_ENABLED = true
+    constant string MB_SND_TEAMREADY_PATH = "Sound\\Interface\\WayPointBling.wav"
+    sound MB_Snd_TeamReady = null  // Persistente (patron MB_Snd_Leave): se crea UNA vez en init, nunca se destruye
+
+    // Rawcode elegido por cada slot. Se captura al crear el héroe base para
+    // que una transformación posterior no cambie el retrato de la tabla.
+    integer array MB_HeroType
+    boolean MB_BoardReady = false
+    boolean MB_HumanIconsRevealed = false
+    boolean MB_OrcIconsRevealed = false
 endglobals
 
 // --- 1. COLORES DE JUGADORES ---
@@ -34,6 +66,272 @@ function MB_GetColor takes player p returns string
         return "|cff7EBFF1" // Celeste
     endif
     return "|cffFFFFFF"
+endfunction
+
+// =====================================================================
+// ICONOS REALES DE HEROES - ZONA EDITABLE
+// =====================================================================
+// Para cambiar un icono, modifica SOLO el texto entre comillas de su rawcode.
+// En el Editor de Objetos: Unidades > el heroe > Arte - Icono de interfaz.
+// La ruta debe conservar las barras dobles "\\" dentro del string JASS.
+// Ejemplo: ReplaceableTextures\\CommandButtons\\BTNHeroPaladin.blp
+function MB_GetHeroIcon takes integer heroType returns string
+    // ---------------- HUMANOS (19) ----------------
+    if (heroType == 'Ekee') then // Guardian del Bosque
+        return "ReplaceableTextures\\CommandButtons\\BTNKeeperOfTheGrove.blp"
+    elseif (heroType == 'Emoo') then // Sacerdotisa de la Luna
+        return "ReplaceableTextures\\CommandButtons\\BTNPriestessOfTheMoon.blp"
+    elseif (heroType == 'Edem') then // Cazador de Demonios
+        return "ReplaceableTextures\\CommandButtons\\BTNEvilIllidan.blp"
+    elseif (heroType == 'Ewar') then // Guardiana
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroWarden.blp"
+    elseif (heroType == 'Hpal') then // Paladin
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroPaladin.blp"
+    elseif (heroType == 'Hamg') then // Archimago
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroArchMage.blp"
+    elseif (heroType == 'Hmkg') then // Rey de la Montana
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroMountainKing.blp"
+    elseif (heroType == 'Hblm') then // Mago sanguinario
+        return "ReplaceableTextures\\CommandButtons\\BTNBloodMage2.blp"
+    elseif (heroType == 'Nalc') then // Alquimista
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroAlchemist.blp"
+    elseif (heroType == 'Ntin') then // Hojalatero
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroTinker.blp"
+    elseif (heroType == 'Npbm') then // Alquimista pandaren
+        return "ReplaceableTextures\\CommandButtons\\BTNPandarenBrewmaster.blp"
+    elseif (heroType == 'Hlgr') then // Lord Garithos
+        return "ReplaceableTextures\\CommandButtons\\BTNGarithos.blp"
+    elseif (heroType == 'Hvwd') then // Sylvanas humana/elfa
+        return "ReplaceableTextures\\CommandButtons\\BTNSylvanusWindrunner.blp"
+    elseif (heroType == 'E005') then // Asesina
+        return "ReplaceableTextures\\CommandButtons\\BTNAssassin.blp"
+    elseif (heroType == 'H00U') then // Goblin Techies
+        return "ReplaceableTextures\\CommandButtons\\BTNGoblinSapper.blp"
+    elseif (heroType == 'H00R') then // Sniper
+        return "ReplaceableTextures\\CommandButtons\\BTNRifleman.blp"
+    elseif (heroType == 'H00Q') then // Bandido
+        return "ReplaceableTextures\\CommandButtons\\BTNBandit.blp"
+    elseif (heroType == 'O00B') then // Magnadefender
+        return "ReplaceableTextures\\CommandButtons\\BTNMagnataur.blp"
+    elseif (heroType == 'H00G') then // Darth'Remar
+        return "ReplaceableTextures\\CommandButtons\\BTNSpellBreakerMagicUnDefend.blp"
+
+        // ---------------- ORCOS (18) ----------------
+    elseif (heroType == 'Obla') then // Maestro de las Espadas
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroBlademaster.blp"
+    elseif (heroType == 'Ofar') then // Vidente
+        return "ReplaceableTextures\\CommandButtons\\BTNThrall.blp"
+    elseif (heroType == 'Otch') then // Jefe Tauren
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroTaurenChieftain.blp"
+    elseif (heroType == 'Oshd') then // Cazador de sombras
+        return "ReplaceableTextures\\CommandButtons\\BTNShadowHunter.blp"
+    elseif (heroType == 'Udea') then // Caballero de la Muerte
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroDeathKnight.blp"
+    elseif (heroType == 'Ulic') then // Lich
+        return "ReplaceableTextures\\CommandButtons\\BTNLichVersion2.blp"
+    elseif (heroType == 'Udre') then // Senor del Terror
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroDreadLord.blp"
+    elseif (heroType == 'Ucrl') then // Senor de la Cripta
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroCryptLord.blp"
+    elseif (heroType == 'Nngs') then // Bruja de mar naga
+        return "ReplaceableTextures\\CommandButtons\\BTNNagaSeaWitch.blp"
+    elseif (heroType == 'Nfir') then // Senor del Fuego
+        return "ReplaceableTextures\\CommandButtons\\BTNHeroAvatarOfFlame.blp"
+    elseif (heroType == 'Nplh') then // Senor del Foso
+        return "ReplaceableTextures\\CommandButtons\\BTNPitLord.blp"
+    elseif (heroType == 'Nman') then // Nigromante
+        return "ReplaceableTextures\\CommandButtons\\BTNNecromancer.blp"
+    elseif (heroType == 'Ogrh') then // Grom Hellscream
+        return "ReplaceableTextures\\CommandButtons\\BTNHellScream.blp"
+    elseif (heroType == 'Usyl') then // Sylvanas no-muerta
+        return "ReplaceableTextures\\CommandButtons\\BTNBansheeRanger.blp"
+    elseif (heroType == 'H00P') then // Butcher Abomination
+        return "ReplaceableTextures\\CommandButtons\\BTNAbomination.blp"
+    elseif (heroType == 'H00V') then // Naga Royal
+        return "ReplaceableTextures\\CommandButtons\\BTNNagaMyrmidon.blp"
+    elseif (heroType == 'H00K') then // Invocador del Trueno
+        return "ReplaceableTextures\\CommandButtons\\BTNPandarenBrewmaster.blp"
+    elseif (heroType == 'N020') then // Troll Berserker
+        return "ReplaceableTextures\\CommandButtons\\BTNHeadHunterBerserker.blp"
+    endif
+
+    // Salvavidas para cualquier heroe nuevo que aun no tenga ruta registrada.
+    if (heroType != 0) then
+        return MB_ICON_UNKNOWN
+    endif
+    return ""
+endfunction
+
+// Escribe exclusivamente la columna 0. Nunca toca nombre, K, D ni A.
+function MB_SetPlayerIcon takes integer id, string iconPath, boolean showIcon returns nothing
+    local integer row = LoadInteger(udg_MB_Hash, id, 0)
+    local multiboarditem mb_item
+
+    if (not MB_BoardReady or row == 0) then
+        return
+    endif
+
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+    call MultiboardSetItemWidth(mb_item, MB_ICON_WIDTH)
+    if (showIcon) then
+        call MultiboardSetItemIcon(mb_item, iconPath)
+        call MultiboardSetItemStyle(mb_item, false, true)
+    else
+        call MultiboardSetItemIcon(mb_item, "")
+        call MultiboardSetItemStyle(mb_item, false, false)
+    endif
+    call MultiboardReleaseItem(mb_item)
+    set mb_item = null
+endfunction
+
+// Un slot cuenta para completar la seleccion mientras su fila siga activa.
+// key 102 = IA sustituta activa; key 103 = fila definitivamente atenuada.
+function MB_IsRequiredForReveal takes integer id returns boolean
+    if (LoadInteger(udg_MB_Hash, id, 0) == 0) then
+        return false
+    endif
+    if (LoadBoolean(udg_MB_Hash, id, 102)) then
+        return true
+    endif
+    if (LoadBoolean(udg_MB_Hash, id, 103)) then
+        return false
+    endif
+    return GetPlayerSlotState(Player(id)) == PLAYER_SLOT_STATE_PLAYING
+endfunction
+
+// Sonido global de "equipo listo". Aislado para poder quitarlo sin tocar el
+// revelado: con el flag en false o sin sonido creado, no hace nada.
+function MB_PlayTeamReadySound takes nothing returns nothing
+    if (not MB_TEAMREADY_SOUND_ENABLED or MB_Snd_TeamReady == null) then
+        return
+    endif
+    call SetSoundVolume(MB_Snd_TeamReady, 127)
+    call StartSound(MB_Snd_TeamReady)
+endfunction
+
+// Revela una faccion completa. Un desertor que alcanzo a escoger conserva el
+// icono real sin atenuar; si nunca escogio, muestra el icono de interrogacion
+// (hasta este momento conservaba el provisional de su faccion).
+// Devuelve cuantos slots recibieron un icono de heroe real.
+function MB_RevealTeam takes integer firstId, integer lastId returns integer
+    local integer i = firstId
+    local integer revealed = 0
+    local string iconPath
+
+    loop
+        exitwhen i > lastId
+        if (LoadInteger(udg_MB_Hash, i, 0) > 0) then
+            if (MB_HeroType[i] != 0) then
+                set iconPath = MB_GetHeroIcon(MB_HeroType[i])
+                call MB_SetPlayerIcon(i, iconPath, iconPath != "")
+                set revealed = revealed + 1
+            else
+                call MB_SetPlayerIcon(i, MB_ICON_UNKNOWN, true)
+            endif
+        endif
+        set i = i + 1
+    endloop
+    return revealed
+endfunction
+
+function MB_TryRevealTeam takes boolean humanTeam returns nothing
+    local integer firstId = 5
+    local integer lastId = 9
+    local integer i
+    local integer revealed = 0
+
+    if (humanTeam) then
+        if (MB_HumanIconsRevealed) then
+            return
+        endif
+        set firstId = 0
+        set lastId = 4
+    elseif (MB_OrcIconsRevealed) then
+        return
+    endif
+
+    set i = firstId
+    loop
+        exitwhen i > lastId
+        if (MB_IsRequiredForReveal(i) and MB_HeroType[i] == 0) then
+            return
+        endif
+        set i = i + 1
+    endloop
+
+    set revealed = MB_RevealTeam(firstId, lastId)
+    if (humanTeam) then
+        set MB_HumanIconsRevealed = true
+    else
+        set MB_OrcIconsRevealed = true
+    endif
+
+    // Aviso sonoro (experimental) solo si la faccion tiene al menos un heroe
+    // real: una faccion vacia o formada solo por desertores sin heroe no suena.
+    if (revealed > 0) then
+        call MB_PlayTeamReadySound()
+    endif
+endfunction
+
+function MB_CheckRevealStates takes nothing returns nothing
+    if (not MB_BoardReady) then
+        return
+    endif
+    call MB_TryRevealTeam(true)
+    call MB_TryRevealTeam(false)
+endfunction
+
+// Conserva el rawcode del primer heroe real creado para el slot.
+function MB_RecordHero takes unit u returns nothing
+    local integer id
+    local string iconPath
+
+    if (u == null or not IsUnitType(u, UNIT_TYPE_HERO) or IsUnitIllusion(u)) then
+        return
+    endif
+
+    set id = GetPlayerId(GetOwningPlayer(u))
+    if (id < 0 or id > 9 or MB_HeroType[id] != 0) then
+        return
+    endif
+
+    set MB_HeroType[id] = GetUnitTypeId(u)
+    if (MB_BoardReady) then
+        if ((id <= 4 and MB_HumanIconsRevealed) or (id >= 5 and MB_OrcIconsRevealed)) then
+            set iconPath = MB_GetHeroIcon(MB_HeroType[id])
+            call MB_SetPlayerIcon(id, iconPath, iconPath != "")
+        else
+            call MB_CheckRevealStates()
+        endif
+    endif
+endfunction
+
+// Respaldo para heroes creados antes de que la tabla visual aparezca a los 2s.
+function MB_CaptureExistingHeroes takes nothing returns nothing
+    local integer i = 0
+    local group g = CreateGroup()
+    local unit u
+
+    loop
+        exitwhen i > 9
+        if (LoadInteger(udg_MB_Hash, i, 0) > 0 and MB_HeroType[i] == 0) then
+            call GroupEnumUnitsOfPlayer(g, Player(i), null)
+            loop
+                set u = FirstOfGroup(g)
+                exitwhen u == null
+                call GroupRemoveUnit(g, u)
+                if (IsUnitType(u, UNIT_TYPE_HERO) and not IsUnitIllusion(u)) then
+                    call MB_RecordHero(u)
+                endif
+            endloop
+        endif
+        call GroupClear(g)
+        set i = i + 1
+    endloop
+
+    call DestroyGroup(g)
+    set g = null
+    set u = null
 endfunction
 
 // --- CONFIGURACIÓN: HECHIZOS DE CONTROL (SIN DAÑO) ---
@@ -544,20 +842,20 @@ function MB_UpdateRow takes player p returns nothing
         set suf = "|r"
     endif
 
-    // Columna 1: Kills
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+    // Columna 2: Kills (0=icono, 1=nombre)
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
     call MultiboardSetItemValue(mb_item, pre + I2S(kills) + suf)
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
 
-    // Columna 2: Deaths
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+    // Columna 3: Deaths
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
     call MultiboardSetItemValue(mb_item, pre + I2S(deaths) + suf)
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
 
-    // Columna 3: Assists (NUEVA)
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+    // Columna 4: Assists
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 4)
     call MultiboardSetItemValue(mb_item, pre + I2S(assists) + suf)
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
@@ -787,26 +1085,27 @@ function MB_FadeRow takes integer id returns nothing
     // refrescar K/D/A (asistencia póstuma del leaver, muerte durante la votación).
     call SaveBoolean(udg_MB_Hash, id, 103, true)
 
-    // Columna 0: Nombre atenuado
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+    // Columna 1: Nombre atenuado. El icono (columna 0) no se oscurece:
+    // si el jugador habia escogido, conserva el retrato normal.
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
     call MultiboardSetItemValue(mb_item, "|cff222222" + name + "|r")
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
-    // Columna 1: Kills atenuado
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+    // Columna 2: Kills atenuado
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(kills) + "|r")
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
-    // Columna 2: Deaths atenuado
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+    // Columna 3: Deaths atenuado
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(deaths) + "|r")
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
-    // Columna 3: Assists atenuado
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+    // Columna 4: Assists atenuado
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 4)
     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(assists) + "|r")
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
@@ -829,6 +1128,10 @@ function Trig_MB_Leaver_Actions takes nothing returns nothing
     // Si es TRUE, significa que el Sistema_Kick ya hizo todo (Sonido, items, tabla).
     // Así que nos detenemos aquí para no repetir cosas.
     if (LoadBoolean(udg_MB_Hash, id, 101) == true) then
+        // El kick ya atenuo la fila. Solo re-evaluamos si el equipo ya puede
+        // revelar sus iconos; no repetimos sonido, items ni votacion.
+        call MB_CheckRevealStates()
+        set p = null
         return 
     endif
     
@@ -839,6 +1142,10 @@ function Trig_MB_Leaver_Actions takes nothing returns nothing
 
     // 2. ATENUAR FILA EN LA TABLA (Nombre + K/D/A en gris)
     call MB_FadeRow(id)
+
+    // El desertor deja de ser requisito. Antes de revelar conserva el icono
+    // provisional; al revelar, sin heroe muestra la interrogacion y con heroe lo conserva.
+    call MB_CheckRevealStates()
 
     // 3. INICIAR VOTACIÓN (El sistema de voto decide qué hacer con el héroe)
     call SistemaVoto_OnPlayerLeave(p)
@@ -871,6 +1178,12 @@ function MB_UpdateClock takes nothing returns nothing
     endif
 
     call MultiboardSetTitleText(udg_MB_Tabla, "Orcos vs Humanos  -   |cff6EACCE" + sMin + ":" + sSec + "|r")
+
+    // Salvavidas para cambios de estado externos (kick/BOT/DROP). Despues de
+    // revelar ambas facciones, MB_TryRevealTeam retorna inmediatamente.
+    if (not MB_HumanIconsRevealed or not MB_OrcIconsRevealed) then
+        call MB_CheckRevealStates()
+    endif
 endfunction
 
 // --- 5. INICIALIZACIÓN (Diseño UI: Estilo Original Preservado) ---
@@ -885,39 +1198,47 @@ function Trig_MB_Init_Actions takes nothing returns nothing
     set udg_MB_Hash = InitHashtable()
     
     // --- CREAR TABLA ---
+    set MB_BoardReady = false
     set udg_MB_Tabla = CreateMultiboard()
-    call MultiboardSetColumnCount(udg_MB_Tabla, 4) // CAMBIO: 4 Columnas
+    call MultiboardSetColumnCount(udg_MB_Tabla, 5)
     call MultiboardSetTitleText(udg_MB_Tabla, "Orcos vs Humanos")
     
     // --- CABECERAS ---
     call MultiboardSetRowCount(udg_MB_Tabla, 1)
     
-    // Columna 0: Jugadores
+    // Columna 0: Icono independiente (cabecera vacia)
     set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 0)
     call MultiboardSetItemValue(mb_item, " ")
+    call MultiboardSetItemWidth(mb_item, MB_ICON_WIDTH)
+    call MultiboardSetItemStyle(mb_item, false, false)
+    call MultiboardReleaseItem(mb_item)
+
+    // Columna 1: Jugadores. Se conserva EXACTAMENTE el ancho probado.
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 1)
+    call MultiboardSetItemValue(mb_item, " ")
     call MultiboardSetItemWidth(mb_item, 0.1024) // Ajuste extremo
-    call MultiboardSetItemStyle(mb_item, true, false) // Icono APAGADO
+    call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
-    // Columna 1: Kills
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 1)
+    // Columna 2: Kills
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 2)
     call MultiboardSetItemValue(mb_item, "|cffFFCC00K|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
-    // Columna 2: Deaths
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 2)
+    // Columna 3: Deaths
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 3)
     call MultiboardSetItemValue(mb_item, "|cffFFCC00D|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
     call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
 
-    // Columna 3: Assists (NUEVA)
-    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 3)
+    // Columna 4: Assists
+    set mb_item = MultiboardGetItem(udg_MB_Tabla, 0, 4)
     call MultiboardSetItemValue(mb_item, "|cffFFCC00A|r")
     call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-    call MultiboardSetItemStyle(mb_item, true, false) // Icono APAGADO
+    call MultiboardSetItemStyle(mb_item, true, false)
     call MultiboardReleaseItem(mb_item)
     
     set currentRow = 1 
@@ -932,35 +1253,43 @@ function Trig_MB_Init_Actions takes nothing returns nothing
             call MultiboardSetRowCount(udg_MB_Tabla, currentRow + 1)
             call SaveInteger(udg_MB_Hash, i, 0, currentRow + 1)
             
+            // Icono provisional humano. No comparte ancho con el nick.
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 0)
+            call MultiboardSetItemValue(mb_item, "")
+            call MultiboardSetItemWidth(mb_item, MB_ICON_WIDTH)
+            call MultiboardSetItemIcon(mb_item, MB_ICON_HUMAN_PLACEHOLDER)
+            call MultiboardSetItemStyle(mb_item, false, true)
+            call MultiboardReleaseItem(mb_item)
+
             // Nombre
             // Guardar nombre en Hash (key 5) para poder recuperarlo en MB_FadeRow
             call SaveStr(udg_MB_Hash, i, 5, GetPlayerName(p))
             
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 0)
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 1)
             call MultiboardSetItemValue(mb_item, MB_GetColor(p) + GetPlayerName(p) + "|r")
             call MultiboardSetItemWidth(mb_item, 0.1024) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
             
             // Kills
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 1)
-            call MultiboardSetItemValue(mb_item, "0")
-            call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
-            call MultiboardReleaseItem(mb_item)
-            
-            // Deaths
             set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 2)
             call MultiboardSetItemValue(mb_item, "0")
             call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
-
-            // Assists (NUEVO)
+            
+            // Deaths
             set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 3)
             call MultiboardSetItemValue(mb_item, "0")
             call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+
+            // Assists
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 4)
+            call MultiboardSetItemValue(mb_item, "0")
+            call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
             
             set currentRow = currentRow + 1
@@ -968,14 +1297,23 @@ function Trig_MB_Init_Actions takes nothing returns nothing
         set i = i + 1
     endloop
 
-    // --- SEPARADOR (Ahora cubre 4 columnas) ---
+    // --- SEPARADOR (cubre las 5 columnas sin alterar sus anchos) ---
     call MultiboardSetRowCount(udg_MB_Tabla, currentRow + 1)
     set i = 0
     loop
-        exitwhen i > 3 // CAMBIO: De 2 a 3 (para cubrir col 0,1,2,3)
+        exitwhen i > 4
         set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, i)
-        call MultiboardSetItemValue(mb_item, " ") 
-        call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+        call MultiboardSetItemValue(mb_item, " ")
+        if (i == 0) then
+            call MultiboardSetItemWidth(mb_item, MB_ICON_WIDTH)
+            call MultiboardSetItemStyle(mb_item, false, false)
+        elseif (i == 1) then
+            call MultiboardSetItemWidth(mb_item, 0.1024)
+            call MultiboardSetItemStyle(mb_item, true, false)
+        else
+            call MultiboardSetItemWidth(mb_item, 0.014)
+            call MultiboardSetItemStyle(mb_item, true, false)
+        endif
         call MultiboardReleaseItem(mb_item)
         set i = i + 1
     endloop
@@ -991,35 +1329,43 @@ function Trig_MB_Init_Actions takes nothing returns nothing
             call MultiboardSetRowCount(udg_MB_Tabla, currentRow + 1)
             call SaveInteger(udg_MB_Hash, i, 0, currentRow + 1)
             
+            // Icono provisional orco. No comparte ancho con el nick.
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 0)
+            call MultiboardSetItemValue(mb_item, "")
+            call MultiboardSetItemWidth(mb_item, MB_ICON_WIDTH)
+            call MultiboardSetItemIcon(mb_item, MB_ICON_ORC_PLACEHOLDER)
+            call MultiboardSetItemStyle(mb_item, false, true)
+            call MultiboardReleaseItem(mb_item)
+
             // Nombre
             // Guardar nombre en Hash (key 5) para poder recuperarlo en MB_FadeRow
             call SaveStr(udg_MB_Hash, i, 5, GetPlayerName(p))
             
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 0)
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 1)
             call MultiboardSetItemValue(mb_item, MB_GetColor(p) + GetPlayerName(p) + "|r")
             call MultiboardSetItemWidth(mb_item, 0.1024) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
             
             // Kills
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 1)
-            call MultiboardSetItemValue(mb_item, "0")
-            call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
-            call MultiboardReleaseItem(mb_item)
-            
-            // Deaths
             set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 2)
             call MultiboardSetItemValue(mb_item, "0")
             call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
-
-            // Assists (NUEVO)
+            
+            // Deaths
             set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 3)
             call MultiboardSetItemValue(mb_item, "0")
             call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
-            call MultiboardSetItemStyle(mb_item, true, false) // Icono FALSE
+            call MultiboardSetItemStyle(mb_item, true, false)
+            call MultiboardReleaseItem(mb_item)
+
+            // Assists
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, currentRow, 4)
+            call MultiboardSetItemValue(mb_item, "0")
+            call MultiboardSetItemWidth(mb_item, 0.014) // Ajuste extremo
+            call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
             
             set currentRow = currentRow + 1
@@ -1027,6 +1373,12 @@ function Trig_MB_Init_Actions takes nothing returns nothing
         set i = i + 1
     endloop
     
+    // La tabla ya esta completa: capturar picks tempranos y comprobar si cada
+    // faccion puede revelar. Todos los clientes ejecutan el mismo cambio.
+    set MB_BoardReady = true
+    call MB_CaptureExistingHeroes()
+    call MB_CheckRevealStates()
+
     // VISIBILIDAD
     call MultiboardDisplay(udg_MB_Tabla, true)
     call MultiboardMinimize(udg_MB_Tabla, false)
@@ -1046,6 +1398,10 @@ function MB_Register_Damage_Event takes nothing returns nothing
     // Si es un Héroe, le conectamos el cable para detectar cuando le pegan.
     if (IsUnitType(u, UNIT_TYPE_HERO)) then
         call TriggerRegisterUnitEvent(gg_trg_tabla, u, EVENT_UNIT_DAMAGED)
+
+        // El mismo nacimiento sirve para recordar el heroe elegido. Ilusiones
+        // y slots ajenos al 0-9 se descartan dentro de MB_RecordHero.
+        call MB_RecordHero(u)
     endif
     
     set u = null
@@ -1073,6 +1429,14 @@ function InitTrig_tabla takes nothing returns nothing
     // Al no usar KillSoundWhenDone, evitamos el bug de duración=0 en la primera reproducción.
     set MB_Snd_Leave = CreateSound("Sound\\Interface\\CreepAggroWhat1.wav", false, false, false, 10, 10, "")
     call SetSoundVolume(MB_Snd_Leave, 127)
+
+    // Sonido "equipo listo" (experimental): MISMO patron. Se crea aqui UNA sola
+    // vez y se reutiliza con StartSound. Nunca KillSoundWhenDone ni CreateSound
+    // en el momento de sonar: eso deja muda la primera reproduccion.
+    if (MB_TEAMREADY_SOUND_ENABLED) then
+        set MB_Snd_TeamReady = CreateSound(MB_SND_TEAMREADY_PATH, false, false, false, 10, 10, "")
+        call SetSoundVolume(MB_Snd_TeamReady, 127)
+    endif
 
     // 4. TRIGGER GLOBAL DE TABLA
     set gg_trg_tabla = CreateTrigger()

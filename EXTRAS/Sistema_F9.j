@@ -17,8 +17,9 @@
 //    10. v1.6
 //    11. v1.7
 //    12. v1.8
-//    13. v1.9 (actual)
-//    14. Acerca de
+//    13. v1.9
+//    14. v2.0 (actual)
+//    15. Acerca de
 //
 //   DERECHA - "Informacion en Vivo" (required=false):
 //     1. Registro de Bajas  -> vive en Sistema_Anuncios.j (NO se mueve aqui)
@@ -55,7 +56,8 @@ globals
     quest F9_QV16       = null   // v1.6
     quest F9_QV17       = null   // v1.7
     quest F9_QV18       = null   // v1.8
-    quest F9_QV19       = null   // v1.9 (version actual)
+    quest F9_QV19       = null   // v1.9
+    quest F9_QV20       = null   // v2.0 (version actual)
     quest F9_QAcerca    = null
     quest F9_QComandos  = null
 endglobals
@@ -348,7 +350,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     // PESTAÑA 10: v1.6
     // NOTA DE ESTILO (v1.6 en adelante): una sola pestaña por version.
     // Para que entre en el limite de ~4096 chars (ver NOTA DE LIMITE arriba):
-    //   - Una linea por cambio: aprovechar el ancho, NO partir en 2-3 lineas.
+    //   - Una linea VISIBLE por cambio: WC3 salta automaticamente por ancho.
+    //     Maximo practico: la linea "Cadena de Relampagos" de v1.9.
     //   - Notacion "x/y" = nivel 1 / nivel maximo (se aclara en la cabecera).
     //   - Solo el nombre en color; los numeros van planos (el color cuesta
     //     ~12 chars por par |cff..|r y es lo que mas infla el texto).
@@ -441,11 +444,12 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n  - |cffFFCC00Andar del Viento|r |cff888888(Maestro Espadas / Grom)|r: daño sorpresa 100/1000 (100/550)."
     set d = d + "|n  - |cffFFCC00Cadena de Relampagos|r |cff888888(Vidente)|r: daño 210/903 (210/862), obj 4/13 (3/10), mana 150/384 (150/415)."
     set d = d + "|n  - |cffFFCC00Rayo Conico|r |cff888888(Vidente)|r: daño 105/906 (85/814), obj 3/12 (1/10), alcance 1005 (800), mana 379 (410)."
-    set d = d + "|n  - |cffFFCC00Tanque Salvaje|r |cff888888(Vidente - reemplaza E. Salvaje)|r: lobo 8000 HP, 200 def, taunt, traspaso, invis, slow."
-    set d = d + "|n  - |cffFFCC00Banish|r |cff888888(Mago Sang.)|r: mana 75/237 (156), enfria 6/4.5s (3.5). |cffFFCC00Defensa Magna|r: indicador de bloqueo."
+    set d = d + "|n  - |cffFFCC00Tanque Salvaje|r |cff888888(Vidente - reemplazo)|r: lobo 8000 HP, 200 def, taunt, traspaso, invis, slow."
+    set d = d + "|n  - |cffFFCC00Banish|r |cff888888(Mago Sang.)|r: mana 75/237 (156), enfria 6/4.5s (6/3.5s)."
+    set d = d + "|n  - |cffFFCC00Defensa Magna|r |cff888888(Magnadefender)|r: indicador de bloqueo."
     set d = d + "|n  - |cffFFCC00Gancho de Carnicero|r |cff888888(Abominacion)|r: alcance 650/1450 (650/1350), nueva cadena azul."
     set d = d + "|n  - |cffFFCC00Tormenta, Tierra y Fuego|r |cff888888(Pandaren)|r: armadura 15/40 (10/25), dura 60s (50/70), enfria 120s (150)."
-    set d = d + "|n  - |cffFFCC00Aturdimiento Alcohol|r |cff888888(Pandaren)|r: lento 20/74% (10/50%), fallo 27/90% (15/60%), enfria 11/20s (8/26)."
+    set d = d + "|n  - |cffFFCC00Aturd. Alcohol|r |cff888888(Pandaren)|r: lento 20/74% (10/50%), fallo 27/90% (15/60%), cd 11/20s (8/26)."
     set d = d + "|n  - |cffFFCC00Aliento de Fuego|r |cff888888(Pandaren)|r: daño 100/901 (85/814), DoT combo 72/360 (75/300), mana 335 (407)."
     set d = d + "|n  - |cffFFCC00Camorrista Borracho|r |cff888888(Pandaren)|r: crit x1.4/2.7 (x1.23/2.11), evasion 10/35% (6/24%), prob 10/35%."
     set d = d + "|n  - |cffFFCC00Aura Inexactitud / Robo Vida|r |cff888888(Sylvanas)|r: distancia -8/35% (7/30%); drena 25/304 vida (25/178)."
@@ -459,18 +463,48 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n  - |cffFFCC00Editor|r: ave neutral 8000 vida (antes 7500), texto corregido; Mercado goblin animado."
     set d = d + "|n  - |cffFFCC00Colecta (-fondo)|r: atajo |cffFFCC00-f|r; acepta |cffFFCC00ok|r o |cffFFCC00-ok|r. |cffFFCC00Comando (-aliados)|r: atajo |cffFFCC00-al|r."
     set d = d + "|n  - |cffFFCC00Mano del Rey|r: costo 4000 (antes 4500). |cffFFCC00Multi-Kill|r: ventana 25s (+5s por kill, max 40s)."
-    set d = d + "|n  - |cffFFCC00Tabla|r: letras K, D, A con color dorado."
     set d = d + "|n|cffFFCC00ARREGLOS|r"
     set d = d + "|n  - |cffFFCC00Soy Huskar|r |cff888888(Troll Berserker)|r: color rojo CC/Hex corregido; texto barra duracion corregido."
     set d = d + "|n  - |cffFFCC00Torres constructores|r: reparacion solo con oro. |cffFFCC00Repeticiones|r: datos en vivo correctos al cambiar."
     set d = d + "|n  - |cffFFCC00Armaduras (+10 def)|r: Coraza de Acero, Lunar Mejorada y Cuero Mejorada dan 10 def (antes 0)."
-    set F9_QV19 = F9_CreateTab("v1.9 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
+    set F9_QV19 = F9_CreateTab("v1.9", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 14: ACERCA DE
+    // PESTAÑA 14: v2.0 (version actual)
+    // ------------------------------------------------------------------
+    set d = "|cffFFCC00HEROES Y HABILIDADES|r"
+    set d = d + "|n  - |cffFFCC00Alquimista pandaren|r: velocidad de movimiento base 290 (antes 270)."
+    set d = d + "|n  - |cffFFCC00Transferencia|r |cff888888(Sylvanas Orco)|r: nuevo nombre de Robo de Vida; transfiere 30/300 (antes 25/304)."
+    set d = d + "|n  - |cffFFCC00Llamarada|r |cff888888(Mago Sanguinario)|r: daño total causado 16/70 (antes 15/55)."
+    set d = d + "|n  - |cffFFCC00Robo Goblin|r |cff888888(Hojalatero)|r: daño contra edificios x1.5 (antes x1.4)."
+    set d = d + "|n  - |cffFFCC00Fabrica de Bolsillo|r |cff888888(Hojalatero)|r: defensa 100 (antes 0), aparicion 3.7/1.0s (4/1.3s)."
+    set d = d + "|n  - |cffFFCC00Pulverizador Curativo|r |cff888888(Alquimista)|r: 6 oleadas (antes 5), cura max 300/3000 (150/1500)."
+    set d = d + "|n  - |cffFFCC00Bomba Acida|r |cff888888(Alquimista)|r: daño/s 4/40 (3/30), mana 100/370 (100/460), reducción 3/30 (2/20)."
+    set d = d + "|n  - |cffFFCC00Bendición de Zeus|r |cff888888(Invocador del Trueno)|r: mana 150/330 (antes 150/447)."
+    set d = d + "|n  - |cffFFCC00Escudo de Rayo|r |cff888888(Invocador del Trueno)|r: daño/s 30/300 (15/150), enfria fijo 15s (10/15s)."
+    set d = d + "|n  - |cffFFCC00Perdición|r |cff888888(PitLord)|r: vida 1500/4000 (2000/6000), def 15/40 (20/60), dura/cd 180/300s (120/180s)."
+    set d = d + "|n  - |cffFFCC00Guardián del Apocalipsis|r: Pisotón cd 10s (6), dura 2s (3); Lisiar cd 5s (10); cambios en mana."
+    set d = d + "|n  - |cffFFCC00Cadena Relampagos|r |cff888888(Vidente)|r: daño 210/1002 (903), enfria 10/28s (8/33), perdida 5% (15%)."
+    set d = d + "|n  - |cffFFCC00Tanque Salvaje|r |cff888888(Vidente)|r: vida 5200 (8000), daño 1-3; pierde invisibilidad e inmunidad magica."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00SISTEMAS|r"
+    set d = d + "|n  - |cffFFCC00Recompensa por baja|r: oro obtenido por eliminar a un héroe aumentado a 500 (antes 250)."
+    set d = d + "|n  - |cffFFCC00Nueva distinción|r: Demoledor, jugador con mayor daño acumulado a edificios/torres."
+    set d = d + "|n  - |cffFFCC00Tabla|r: agregado icono de héroe; se revela cuando el equipo completo termina de elegir."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00ARREGLOS|r"
+    set d = d + "|n  - |cffFFCC00Repeticiones|r: se soluciono el error que impedia ver repeticiones o las reproducia con fallos."
+    set d = d + "|n  - |cffFFCC00Soy Huskar|r |cff888888(Troll Berserker)|r: al revivir mantiene correctamente su apariencia."
+    set d = d + "|n  - |cffFFCC00Gancho de Carnicero|r |cff888888(Abominacion)|r: el enganche vuelve a cancelar el TP (Botas TP) de la presa."
+    set d = d + "|n  - |cffFFCC00Gancho de Carnicero|r |cff888888(Abominacion)|r: se restauro el color original de la cadena (naranja)."
+    set d = d + "|n  - |cffFFCC00Robo Goblin|r |cff888888(Hojalatero)|r: su icono regresa siempre a su estado normal al transformarse."
+    set F9_QV20 = F9_CreateTab("v2.0 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER HABILIDADES: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
+
+    // ------------------------------------------------------------------
+    // PESTAÑA 15: ACERCA DE
     // ------------------------------------------------------------------
     set d = "|cffFFCC00Orcos vs Humanos Infinito|r"
-    set d = d + "|n|cffFFCC00Version 1.9|r"
+    set d = d + "|n|cffFFCC00Version 2.0|r"
     set d = d + "|n"
     set d = d + "|nMapa competitivo tipo MOBA"
     set d = d + "|npara Warcraft III 1.27b."
@@ -526,8 +560,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     // Pasar "" si ese subtitulo no aporta informacion. No hace falta guardar el
     // handle si la pestaña es estatica.
     //
-    // Para una NUEVA VERSION (ej. v1.10): copiar el bloque de una pestaña de
-    // version, cambiar el titulo/contenido y agregar su global (F9_QV20).
+    // Para una NUEVA VERSION (ej. v2.1): copiar el bloque de una pestaña de
+    // version, cambiar el titulo/contenido y agregar su global (F9_QV21).
     // NUNCA meter todas las versiones en una sola pestaña: se pasa del limite
     // de ~4096 chars y crashea la carga (ver NOTA DE LIMITE arriba).
     // ------------------------------------------------------------------

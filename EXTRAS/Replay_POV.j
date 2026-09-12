@@ -72,8 +72,6 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
     globals
         private leaderboard ReplayPOV_Board = null
         private player ReplayPOV_CachedPlayer = null
-        private timer ReplayPOV_RefreshTimer = null
-        private constant real REPLAY_POV_REFRESH_INTERVAL = 0.25
     endglobals
 
     // Avisos publicos compatibles con el POV de las repeticiones. En partida
@@ -153,8 +151,8 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
     endfunction
 
     // El panel de -fondo se mueve a 33 FPS; hacer la deteccion completa en
-    // cada frame seria innecesario. Este valor se refresca solo en replays.
-    // En juego normal no consulta leaderboards y conserva GetLocalPlayer().
+    // cada frame seria innecesario. El HUD refresca este valor desde su timer
+    // ya existente, evitando crear handles adicionales solo en repeticiones.
     function GetReplayPlayerCached takes nothing returns player
         if GetGameStatus() != GAME_STATUS_REPLAY then
             return GetLocalPlayer()
@@ -165,7 +163,7 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
         return ReplayPOV_CachedPlayer
     endfunction
 
-    private function ReplayPOV_Refresh takes nothing returns nothing
+    function ReplayPOV_RefreshCache takes nothing returns nothing
         set ReplayPOV_CachedPlayer = GetReplayPlayer()
     endfunction
 
@@ -173,13 +171,6 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
         set ReplayPOV_Board = CreateLeaderboard()
         call LeaderboardDisplay(ReplayPOV_Board, false)
         set ReplayPOV_CachedPlayer = GetLocalPlayer()
-
-        // Ningun timer ni sondeo de leaderboard queda activo en juego normal.
-        if GetGameStatus() == GAME_STATUS_REPLAY then
-            set ReplayPOV_CachedPlayer = GetReplayPlayer()
-            set ReplayPOV_RefreshTimer = CreateTimer()
-            call TimerStart(ReplayPOV_RefreshTimer, REPLAY_POV_REFRESH_INTERVAL, true, function ReplayPOV_Refresh)
-        endif
     endfunction
 
 endlibrary

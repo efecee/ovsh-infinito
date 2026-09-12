@@ -18,7 +18,9 @@
 // animacion "alternate": Chemical Rage puede dejar activa la apariencia del
 // Troll Headhunter aunque el unit-type ya sea N020. El limite de espera solo
 // evita dejar un timer vivo si el lanzamiento fuera cancelado antes de llegar
-// a N021; no decide cuanto dura el color.
+// a N021; no decide cuanto dura el color. La misma propiedad se repone al
+// terminar una resurreccion, porque la muerte reconstruye el modelo de N020 y
+// puede devolverlo visualmente a su variante Troll Headhunter.
 //===========================================================================
 
 scope FuriaHuskar initializer Init
@@ -191,14 +193,33 @@ scope FuriaHuskar initializer Init
         return GetSpellAbilityId() == ABILITY_ID
     endfunction
 
+    // La resurreccion conserva el tipo N020, pero puede reconstruir el modelo
+    // sin su variante "alternate". REVIVE_FINISH ocurre cuando el heroe ya
+    // esta vivo y el modelo de resurreccion termino de cargarse.
+    private function ReviveActions takes nothing returns nothing
+        local unit revived = GetRevivingUnit()
+
+        if revived != null and GetUnitTypeId(revived) == BASE_UNIT_ID then
+            call AddUnitAnimationProperties(revived, "alternate", true)
+            call ResetUnitAnimation(revived)
+        endif
+
+        set revived = null
+    endfunction
+
     private function Init takes nothing returns nothing
-        local trigger t = CreateTrigger()
+        local trigger spellTrigger = CreateTrigger()
+        local trigger reviveTrigger = CreateTrigger()
 
-        call TriggerRegisterAnyUnitEventBJ(t, EVENT_PLAYER_UNIT_SPELL_EFFECT)
-        call TriggerAddCondition(t, Condition(function Conditions))
-        call TriggerAddAction(t, function Actions)
+        call TriggerRegisterAnyUnitEventBJ(spellTrigger, EVENT_PLAYER_UNIT_SPELL_EFFECT)
+        call TriggerAddCondition(spellTrigger, Condition(function Conditions))
+        call TriggerAddAction(spellTrigger, function Actions)
 
-        set t = null
+        call TriggerRegisterAnyUnitEventBJ(reviveTrigger, EVENT_PLAYER_HERO_REVIVE_FINISH)
+        call TriggerAddAction(reviveTrigger, function ReviveActions)
+
+        set spellTrigger = null
+        set reviveTrigger = null
     endfunction
 
 endscope

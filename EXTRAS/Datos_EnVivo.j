@@ -312,6 +312,7 @@ scope DatosEnVivo initializer Init
         set updateContent = (HUD_TickCount >= 17)
         if updateContent then
             set HUD_TickCount = 0
+            call ReplayPOV_RefreshCache()
             set HUD_ViewerPid = GetPlayerId(GetReplayPlayerCached())
         endif
 

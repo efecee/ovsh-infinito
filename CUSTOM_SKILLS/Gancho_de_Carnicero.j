@@ -16,6 +16,11 @@
 //   no en la posición donde lanzó el gancho. Esto permite la jugada
 //   táctica de alejarse en dirección contraria para arrastrar más lejos.
 //
+//   La PRESA, en cambio, queda CORTADA: al engancharla se interrumpe lo que
+//   esté haciendo (TP de Botas, canalizaciones, ataques) y durante todo el
+//   arrastre no puede iniciar ni completar nada. Ver bloque INTERRUPCIÓN DE
+//   LA PRESA, antes del callback del timer.
+//
 //   Durante la retracción, el cuerpo (lightning) deja un rastro fantasma
 //   que se desvanece gradualmente (trail con alpha decreciente).
 //
@@ -60,6 +65,10 @@
 // ║                                                                    ║
 // ║  ► QUÉ UNIDADES IGNORA EL GANCHO (pasa de largo sin engancharlas): ║
 // ║    → Aquí, función Hook_IsHookImmune.                              ║
+// ║  ► CANCELAR EL TP (Y TODA CANALIZACIÓN) DE LA PRESA AL ENGANCHAR:  ║
+// ║    → Aquí, bloque INTERRUPCIÓN DE LA PRESA (stop+SetUnitPosition). ║
+// ║    → NO volver a SetUnitX/Y para la presa: deja terminar el TP.    ║
+// ║                                                                    ║
 // ║                                                                    ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 //
@@ -202,7 +211,7 @@ endfunction
 // Otros: "CLPB" (azul grueso, animado), "FORK" (bifurcado),
 //        "DRAM" (drain mana, azul-morado), "SPLK" (spirit link alt).
 function Hook_GetLightningType takes nothing returns string
-    return "DRAM"
+    return "LEAS" //DRAM
 endfunction
 
 // Velocidad de desvanecimiento del rastro (trail) durante retracción.
@@ -369,6 +378,41 @@ function Hook_FilterEnum takes nothing returns boolean
 endfunction
 
 // ==========================================
+// ===   INTERRUPCIÓN DE LA PRESA (TP)    ===
+// ==========================================
+// QUÉ GARANTIZA: enganchar a alguien CORTA lo que esté haciendo. El caso que
+// importa en partida es el TP de las Botas ('I00W' / báculo 'brac'): una
+// canalización de motor de 3s que el rival usa para huir y que todo el mapa
+// sabe que se cancela con hex, stun, raíces, red... y con el gancho.
+//
+// CÓMO LO ROMPE EL MOTOR: una canalización muere cuando la unidad recibe una
+// orden nueva o cuando el motor le resetea la orden actual. Acá se usan las
+// dos vías, en dos momentos distintos:
+//
+//   1. AL ENGANCHAR (una vez): orden "stop" inmediata a la presa. Es la misma
+//      vía que usa Zona_Seleccion.j para cortar el TP sobre wisps. Corta el TP
+//      en el instante del enganche, sin esperar al primer tick de arrastre.
+//
+//   2. DURANTE EL ARRASTRE (cada tick): la presa se mueve con SetUnitPosition,
+//      NO con SetUnitX/Y. Son dos natives distintos A PROPÓSITO:
+//        - SetUnitX/Y: mueve "por debajo" del motor; la unidad CONSERVA su
+//          orden. Si estaba canalizando el TP, lo TERMINA mientras la
+//          arrastran (ese era exactamente el bug reportado en v2.0).
+//        - SetUnitPosition: mueve Y resetea la orden actual. La presa no
+//          puede iniciar ni completar nada mientras cuelga del gancho.
+//      Es lo que hacía el gancho original (SetUnitPositionLoc, en GUI) y por
+//      eso "el gancho de antes" sí cancelaba el TP. La reescritura pasó a
+//      SetUnitX/Y (idioma moderno de knockback) sin reparar en este efecto.
+//
+//      SetUnitPathing(false) se mantiene durante el arrastre: con pathing
+//      apagado, SetUnitPosition coloca a la unidad EXACTO donde se le indica
+//      (no busca "el punto libre más cercano"), así que el arrastre por
+//      terreno intransitable se comporta igual que antes.
+//
+// La CABEZA dummy (n01Z) no cambia: para ella SetUnitX/Y no renderiza bien y
+// se recrea cada tick (ver callback).
+
+// ==========================================
 // ===       CALLBACK DEL TIMER           ===
 // ==========================================
 
@@ -429,6 +473,10 @@ function Hook_Loop_Callback takes nothing returns nothing
                     // ¡ENGANCHE!
                     set udg_Hook_Target[i] = firstU
                     set udg_Hook_Drag[i] = true
+
+                    // Cortar EN EL ACTO lo que la presa esté haciendo (TP de Botas,
+                    // canalización, ataque...). Ver bloque INTERRUPCIÓN DE LA PRESA.
+                    call IssueImmediateOrder(firstU, "stop")
 
                     // Guardar posición de máximo alcance (para trail)
                     set Hook_MaxReachX[i] = Hook_HeadX[i]
@@ -491,8 +539,7 @@ function Hook_Loop_Callback takes nothing returns nothing
 
                     // Mover target a posición final del caster
                     if (udg_Hook_Target[i] != null) then
-                        call SetUnitX(udg_Hook_Target[i], cx)
-                        call SetUnitY(udg_Hook_Target[i], cy)
+                        call SetUnitPosition(udg_Hook_Target[i], cx, cy)
                         call SetUnitPathing(udg_Hook_Target[i], true)
                     endif
 
@@ -537,9 +584,11 @@ function Hook_Loop_Callback takes nothing returns nothing
 
                     // Arrastrar target (si hay uno)
                     if (udg_Hook_Target[i] != null) then
+                        // SetUnitPosition, NO SetUnitX/Y: mueve Y resetea la orden de la
+                        // presa en cada tick → no puede terminar ni iniciar el TP mientras
+                        // cuelga del gancho. Ver bloque INTERRUPCIÓN DE LA PRESA.
                         call SetUnitPathing(udg_Hook_Target[i], false)
-                        call SetUnitX(udg_Hook_Target[i], Hook_HeadX[i])
-                        call SetUnitY(udg_Hook_Target[i], Hook_HeadY[i])
+                        call SetUnitPosition(udg_Hook_Target[i], Hook_HeadX[i], Hook_HeadY[i])
 
                         // Efecto visual de arrastre (solo enemigos, sin daño)
                         if (IsUnitEnemy(udg_Hook_Target[i], ownerP)) then

@@ -23,6 +23,13 @@ globals
     boolean AB_ORC_F2Bot_Open = false
     boolean AB_ORC_F1_Open    = false
     boolean AB_ORC_F0_Open    = false
+    // Rastreo aislado de dano de asedio (indice = player id 0-9).
+    // No usa udg_MB_Hash: evita colisiones/flushes con tabla.j y otras skills.
+    trigger AB_SiegeDamageTrigger = null
+    real array AB_SiegeF0
+    real array AB_SiegeF1
+    real array AB_SiegeF2
+    real array AB_SiegeF3
     sound AB_SND_GameFound    = null
     sound AB_SND_Rescue       = null
     sound AB_SND_QuestFailed  = null
@@ -49,6 +56,49 @@ function AB_GetUnitAt takes integer uid, real x, real y returns unit
     return found
 endfunction
 
+// Acumula el dano EFECTIVO hecho a estructuras clave enemigas.
+// - GetOwningPlayer(source) acredita heroes, invocaciones, wards y dummies
+//   al mismo jugador dueno.
+// - Los slots 10/11 (creeps/estructuras de linea) quedan fuera.
+// - Reparar no resta: si esa vida vuelve a perderse, el nuevo dano suma otra vez.
+// - En WC3 1.27b este evento conserva la vida previa al impacto; limitar el dano
+//   a esa vida evita que el overkill del golpe letal infle al Demoledor.
+function AB_OnSiegeDamage takes nothing returns nothing
+    local unit target = GetTriggerUnit()
+    local unit source = GetEventDamageSource()
+    local player sourceOwner = null
+    local integer pid = -1
+    local real damage = GetEventDamage()
+    local real remainingLife = GetWidgetLife(target)
+
+    if source != null and damage > 0.0 then
+        set sourceOwner = GetOwningPlayer(source)
+        set pid = GetPlayerId(sourceOwner)
+
+        if pid >= 0 and pid <= 9 and IsUnitEnemy(target, sourceOwner) then
+            if damage > remainingLife then
+                set damage = remainingLife
+            endif
+
+            if damage > 0.0 then
+                if IsUnitInGroup(target, AB_HUM_F0) or IsUnitInGroup(target, AB_ORC_F0) then
+                    set AB_SiegeF0[pid] = AB_SiegeF0[pid] + damage
+                elseif IsUnitInGroup(target, AB_HUM_F1) or IsUnitInGroup(target, AB_ORC_F1) then
+                    set AB_SiegeF1[pid] = AB_SiegeF1[pid] + damage
+                elseif IsUnitInGroup(target, AB_HUM_F2_TOP) or IsUnitInGroup(target, AB_HUM_F2_BOT) or IsUnitInGroup(target, AB_ORC_F2_TOP) or IsUnitInGroup(target, AB_ORC_F2_BOT) then
+                    set AB_SiegeF2[pid] = AB_SiegeF2[pid] + damage
+                elseif IsUnitInGroup(target, AB_HUM_F3_TOP) or IsUnitInGroup(target, AB_HUM_F3_BOT) or IsUnitInGroup(target, AB_ORC_F3_TOP) or IsUnitInGroup(target, AB_ORC_F3_BOT) then
+                    set AB_SiegeF3[pid] = AB_SiegeF3[pid] + damage
+                endif
+            endif
+        endif
+    endif
+
+    set target = null
+    set source = null
+    set sourceOwner = null
+endfunction
+
 // Activa permanentemente la variante de animacion "work" en todas las
 // unidades colocadas en el mapa que coincidan con el rawcode indicado.
 function AB_EnableWorkAnimation takes integer uid returns nothing
@@ -73,6 +123,11 @@ function AB_Capture takes group g, integer uid, real x, real y, boolean protect 
     local unit u = AB_GetUnitAt(uid, x, y)
     if u != null then
         call GroupAddUnit(g, u)
+        // El mismo punto que define las fases registra los objetivos de Demoledor:
+        // no se duplican rawcodes/coordenadas ni entran edificios ajenos al sistema.
+        if AB_SiegeDamageTrigger != null then
+            call TriggerRegisterUnitEvent(AB_SiegeDamageTrigger, u, EVENT_UNIT_DAMAGED)
+        endif
         if protect then
             call SetUnitInvulnerable(u, true)
         endif
@@ -501,6 +556,11 @@ function AB_DelayedInit takes nothing returns nothing
 endfunction
 
 function InitTrig_Sistema_AntiBackdoor takes nothing returns nothing
+    // Trigger persistente y exclusivo para las 76 estructuras capturadas abajo.
+    // AB_Capture agrega los eventos cuando el timer diferido encuentra cada unidad.
+    set AB_SiegeDamageTrigger = CreateTrigger()
+    call TriggerAddAction(AB_SiegeDamageTrigger, function AB_OnSiegeDamage)
+
     // Sonido propio de Rescue (sin label preconfigurado = sin cap de volumen)
     set AB_SND_Rescue = CreateSound("Sound\\Interface\\Rescue.wav", false, false, false, 10, 10, "")
     call SetSoundDuration(AB_SND_Rescue, 3796)

@@ -622,22 +622,23 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOV
 
         set row = LoadInteger(udg_MB_Hash, id, 0)
         if (row > 0) then
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+            // Columna 0 conserva el icono; el nombre ahora vive en la 1.
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
             call MultiboardSetItemValue(mb_item, "|cFFFFCC00IA|r " + Voto_GetColor(Player(id)) + LoadStr(udg_MB_Hash, id, 5) + "|r")
             call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
 
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
             call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 1)))
             call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
 
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
             call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 2)))
             call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)
 
-            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+            set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 4)
             call MultiboardSetItemValue(mb_item, I2S(LoadInteger(udg_MB_Hash, id, 4)))
             call MultiboardSetItemStyle(mb_item, true, false)
             call MultiboardReleaseItem(mb_item)

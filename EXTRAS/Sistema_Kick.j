@@ -183,19 +183,20 @@ function Trig_Sistema_Kick_Actions takes nothing returns nothing
                 // Atenuar fila (DROP definitivo)
                 set row = LoadInteger(udg_MB_Hash, id, 0)
                 if (row > 0) then
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+                    // Columna 0 es el icono y se conserva sin atenuar.
+                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
                     call MultiboardSetItemValue(mb_item, "|cff222222" + LoadStr(udg_MB_Hash, id, 5) + "|r")
                     call MultiboardSetItemStyle(mb_item, true, false)
                     call MultiboardReleaseItem(mb_item)
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
                     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 1)) + "|r")
                     call MultiboardSetItemStyle(mb_item, true, false)
                     call MultiboardReleaseItem(mb_item)
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
                     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 2)) + "|r")
                     call MultiboardSetItemStyle(mb_item, true, false)
                     call MultiboardReleaseItem(mb_item)
-                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+                    set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 4)
                     call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 4)) + "|r")
                     call MultiboardSetItemStyle(mb_item, true, false)
                     call MultiboardReleaseItem(mb_item)
@@ -228,23 +229,23 @@ function Trig_Sistema_Kick_Actions takes nothing returns nothing
             // (Inlineado aquí porque Sistema_Kick compila antes que tabla.j)
             set row = LoadInteger(udg_MB_Hash, id, 0)
             if (row > 0) then
-                // Nombre atenuado
-                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 0)
+                // Nombre atenuado. Columna 0 es el icono y no se oscurece.
+                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
                 call MultiboardSetItemValue(mb_item, "|cff222222" + LoadStr(udg_MB_Hash, id, 5) + "|r")
                 call MultiboardSetItemStyle(mb_item, true, false)
                 call MultiboardReleaseItem(mb_item)
                 // Kills atenuado
-                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 1)
+                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
                 call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 1)) + "|r")
                 call MultiboardSetItemStyle(mb_item, true, false)
                 call MultiboardReleaseItem(mb_item)
                 // Deaths atenuado
-                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 2)
+                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
                 call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 2)) + "|r")
                 call MultiboardSetItemStyle(mb_item, true, false)
                 call MultiboardReleaseItem(mb_item)
                 // Assists atenuado
-                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 3)
+                set mb_item = MultiboardGetItem(udg_MB_Tabla, row - 1, 4)
                 call MultiboardSetItemValue(mb_item, "|cff222222" + I2S(LoadInteger(udg_MB_Hash, id, 4)) + "|r")
                 call MultiboardSetItemStyle(mb_item, true, false)
                 call MultiboardReleaseItem(mb_item)

@@ -14,6 +14,7 @@
 //
 // DEPENDENCIAS:
 //   - Sistema_Voto.j (library SistemaVoto): Voto_GameOver, ForceEndVote
+//   - Sistema_AntiBackdoor.j: AB_SiegeF0/F1/F2/F3
 //   - Sistema_Anuncios.j: KF_DisplayFinalLog (invocada mediante ExecuteFunc)
 //   - tabla.j: MB_Timer, MB_GetColor, udg_MB_Hash, udg_MB_Tabla
 //   - init.j: udg_unit19 (Castillo Humano), udg_unit24 (Fortaleza Orca)
@@ -27,13 +28,14 @@
 //   Se muestran los 3 primeros puestos.
 //
 // PREMIOS INDIVIDUALES (resumen final):
+//   Demoledor   = mayor daño efectivo a estructuras clave enemigas (F0-F3)
 //   Cazahéroes  = mayor daño total a héroes  (udg_MB_Hash key 700, lo llena tabla.j)
 //   Donador     = más oro donado NETO (udg_MB_Hash keys 701/702, Comandos_Economia.j)
 //   Soporte     = más asistencias            (udg_MB_Hash key 4)
-//   Primera Baja = quién hizo el primer kill (udg_MB_Hash parent 999, Sistema_Kills.j)
 //===========================================================================
 
 globals
+    constant real SV_SIEGE_EPSILON = 0.01
     boolean SV_GameEnded  = false      // Guardia contra re-entrada
     boolean SV_HumansLost = false       // true = Castillo destruido, false = Fortaleza
     // Buffers para el cálculo del Top 3 al terminar (índice 0-9). Se usan una sola
@@ -50,6 +52,7 @@ globals
     string  SV_DefeatText  = ""
     integer SV_PlayerCount = 0
     integer SV_DmgId       = -1
+    integer SV_SiegeId     = -1
     integer SV_GoldId      = -1
     integer SV_AssistId    = -1
 endglobals
@@ -84,15 +87,89 @@ function SV_GetColor takes player p returns string
 endfunction
 
 // --- NOMBRE DE JUGADOR (con respaldo) ---
-// Devuelve el nombre guardado por tabla.j (key 5). Si está vacío (p.ej. la
-// primera sangre la hizo alguien sin fila registrada en la tabla), cae al
-// nombre nativo del jugador para no mostrar nunca un nombre en blanco.
+// Devuelve el nombre guardado por tabla.j (key 5). Si está vacío, cae al nombre
+// nativo del jugador para no mostrar nunca un nombre en blanco.
 function SV_NameOf takes integer pid returns string
     local string s = LoadStr(udg_MB_Hash, pid, 5)
     if (s == null or s == "") then
         return GetPlayerName(Player(pid))
     endif
     return s
+endfunction
+
+// --- HELPERS: PREMIO DEMOLEDOR ---
+function SV_GetSiegeTotal takes integer pid returns real
+    return AB_SiegeF0[pid] + AB_SiegeF1[pid] + AB_SiegeF2[pid] + AB_SiegeF3[pid]
+endfunction
+
+function SV_IsWinningPid takes integer pid returns boolean
+    if SV_HumansLost then
+        return pid >= 5 and pid <= 9
+    endif
+    return pid >= 0 and pid <= 4
+endfunction
+
+// Compara solo candidatos que ya tienen daño de asedio positivo.
+// Orden: total > equipo ganador > F0 > F1 > F2 > F3 > kills > menor pid.
+// La prioridad por fase es lexicografica: nunca compensa un total inferior.
+function SV_IsBetterSiegeCandidate takes integer candidate, integer current returns boolean
+    local real candidateTotal = SV_GetSiegeTotal(candidate)
+    local real currentTotal = SV_GetSiegeTotal(current)
+    local boolean candidateWon
+    local boolean currentWon
+    local boolean sameTeam
+    local integer candidateKills
+    local integer currentKills
+
+    if candidateTotal > currentTotal + SV_SIEGE_EPSILON then
+        return true
+    elseif currentTotal > candidateTotal + SV_SIEGE_EPSILON then
+        return false
+    endif
+
+    set candidateWon = SV_IsWinningPid(candidate)
+    set currentWon = SV_IsWinningPid(current)
+    if candidateWon and not currentWon then
+        return true
+    elseif currentWon and not candidateWon then
+        return false
+    endif
+
+    set sameTeam = (candidate <= 4 and current <= 4) or (candidate >= 5 and current >= 5)
+    if sameTeam then
+        if AB_SiegeF0[candidate] > AB_SiegeF0[current] + SV_SIEGE_EPSILON then
+            return true
+        elseif AB_SiegeF0[current] > AB_SiegeF0[candidate] + SV_SIEGE_EPSILON then
+            return false
+        endif
+        if AB_SiegeF1[candidate] > AB_SiegeF1[current] + SV_SIEGE_EPSILON then
+            return true
+        elseif AB_SiegeF1[current] > AB_SiegeF1[candidate] + SV_SIEGE_EPSILON then
+            return false
+        endif
+        if AB_SiegeF2[candidate] > AB_SiegeF2[current] + SV_SIEGE_EPSILON then
+            return true
+        elseif AB_SiegeF2[current] > AB_SiegeF2[candidate] + SV_SIEGE_EPSILON then
+            return false
+        endif
+        if AB_SiegeF3[candidate] > AB_SiegeF3[current] + SV_SIEGE_EPSILON then
+            return true
+        elseif AB_SiegeF3[current] > AB_SiegeF3[candidate] + SV_SIEGE_EPSILON then
+            return false
+        endif
+    endif
+
+    // Solo lectura de la estadistica existente: Demoledor no escribe ni limpia
+    // ninguna clave de udg_MB_Hash.
+    set candidateKills = LoadInteger(udg_MB_Hash, candidate, 1)
+    set currentKills = LoadInteger(udg_MB_Hash, current, 1)
+    if candidateKills > currentKills then
+        return true
+    elseif currentKills > candidateKills then
+        return false
+    endif
+
+    return candidate < current
 endfunction
 
 // --- Limpia los timerdialogs de resurrección (sistema legacy de init.j) ---
@@ -207,8 +284,6 @@ function SV_BuildReport takes nothing returns string
     local integer rank
     local integer bestScore
     local integer bestIdx
-    local integer fbRaw
-    local integer fbPid
     local string report = "|cffC0C0C0Equipo ganador:|r " + SV_WinTeam
     local string awards = ""
 
@@ -248,12 +323,12 @@ function SV_BuildReport takes nothing returns string
     // --- PREMIOS INDIVIDUALES (cada línea solo si hay ganador con valor > 0) ---
     // Etiquetas breves y sin métricas para mantener cada distinción en una sola
     // línea incluso cuando el nombre del jugador sea largo.
-    if (SV_DmgId >= 0 or SV_GoldId >= 0 or SV_AssistId >= 0) then
-        // Primera Baja (pid+1 guardado por Sistema_Kills.j; 0 = no hubo).
-        set fbRaw = LoadInteger(udg_MB_Hash, 999, 0)
-        if (fbRaw > 0) then
-            set fbPid = fbRaw - 1
-            set awards = "|cffC0C0C0Primera Baja:|r " + SV_GetColor(Player(fbPid)) + SV_NameOf(fbPid) + "|r"
+    if (SV_DmgId >= 0 or SV_SiegeId >= 0 or SV_GoldId >= 0 or SV_AssistId >= 0) then
+        if (SV_SiegeId >= 0) then
+            if (awards != "") then
+                set awards = awards + "|n"
+            endif
+            set awards = awards + "|cffC0C0C0Demoledor:|r " + SV_GetColor(Player(SV_SiegeId)) + SV_NameOf(SV_SiegeId) + "|r"
         endif
         if (SV_DmgId >= 0) then
             if (awards != "") then
@@ -304,6 +379,7 @@ function SV_OnStructureDeath takes nothing returns nothing
     local real    dmgVal
     local real    bestDmg    = 0.0
     local integer dmgId      = -1
+    local integer siegeId    = -1
     local integer bestGold   = 0
     local integer goldId     = -1
     local integer bestAssist = 0
@@ -380,6 +456,14 @@ function SV_OnStructureDeath takes nothing returns nothing
                 set bestDmg = dmgVal
                 set dmgId = i
             endif
+            // Premio "Demoledor": daño efectivo acumulado en F0-F3 enemigas.
+            if SV_GetSiegeTotal(i) > 0.0 then
+                if siegeId < 0 then
+                    set siegeId = i
+                elseif SV_IsBetterSiegeCandidate(i, siegeId) then
+                    set siegeId = i
+                endif
+            endif
             // Premio "Banquero": más oro donado NETO (701 - 702, ya clampeado).
             if (goldDon > bestGold) then
                 set bestGold = goldDon
@@ -409,6 +493,7 @@ function SV_OnStructureDeath takes nothing returns nothing
     set SV_DurStr      = sMin + ":" + sSec
     set SV_PlayerCount = playerCount
     set SV_DmgId       = dmgId
+    set SV_SiegeId     = siegeId
     set SV_GoldId      = goldId
     set SV_AssistId    = assistId
     set SV_ReportText  = SV_BuildReport()

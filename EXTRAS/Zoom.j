@@ -70,7 +70,7 @@ endfunction
 // --- FUNCIÓN 1: EL MENSAJE AUTOMÁTICO ---
 function Trig_Zoom_Message takes nothing returns nothing
     // Usamos códigos de color: |cff(Hex)Texto|r
-    call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 12.00, "Nuevos |cffFFCC00comandos|r y modificaciones |cffFFCC00añadidos|r.\nPresiona |cffFFCC00F9|r.")
+    call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 12.00, "|cffFFCC00Notas del parche|r\nConoce todas las novedades de esta versión en |cffFFCC00F9|r.")
     call StartSound(bj_questUpdatedSound)
     call StartSound(CreateSound("Sound\\Interface\\QuestActivateWhat1.wav", false, false, false, 10, 10, ""))
 

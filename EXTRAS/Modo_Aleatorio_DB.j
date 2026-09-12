@@ -586,7 +586,7 @@ library ModoAleatorio initializer OnInit
         call RegisterAbil('ANms', SLOT_E)  // Escudo de Maná — Bruja de Mar Naga
         call RegisterAbil('ANia', SLOT_E)  // Incinerar — Señor del Fuego
         call RegisterAbil('ANca', SLOT_E)  // Ataque Arrollador — Señor del Foso/Naga Royal
-        call RegisterAbil('A02R', SLOT_E)  // Robo de Vida — Sylvanas Orco
+        call RegisterAbil('A02R', SLOT_E)  // Transferencia (antes Robo de Vida) — Sylvanas Orco
         call RegisterAbil('A03O', SLOT_E)  // Inmolación — Butcher Abomination
         call RegisterAbil('A036', SLOT_E)  // Escudo de Rayo — Invocador del Trueno
         call RegisterAbil('A045', SLOT_E)  // Rejuvenecimiento — Troll Berserker
