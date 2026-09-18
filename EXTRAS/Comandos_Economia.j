@@ -81,6 +81,7 @@ globals
     //   - VENTA/EMPEÑO (reembolso mitad) ..... Eco_OnItemPawned (este archivo, vía IADataItems)
     //   - Sello de Fortificación ('gfor') .... Sistema_Sello_Fortificacion.j (no está en la DB)
     //   - BOUNTY de matar (fijo) ............. Sistema_Merito_Track.j
+    //   - BOUNTY de un creep transmutado ..... Sistema_Transmutar.j
     // Si falta uno, ese movimiento se confundiría con un regalo F11 (falso positivo)
     // o descuadraría un par real (regalo perdido). El gasto/recompensa unilateral
     // que NO se sincronice solo causa un raro falso negativo (dirección segura).

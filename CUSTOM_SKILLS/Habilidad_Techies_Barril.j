@@ -86,25 +86,25 @@ endfunction
 // Modifica cada valor A TU GUSTO para cada nivel.
 function Techies_GetHitsToDestroy takes integer level returns integer
     if (level == 1) then
-        return 2
+        return 1
     elseif (level == 2) then
-        return 3
+        return 2
     elseif (level == 3) then
-        return 4
+        return 3
     elseif (level == 4) then
-        return 5
+        return 4
     elseif (level == 5) then
-        return 6
+        return 5
     elseif (level == 6) then
-        return 7
+        return 6
     elseif (level == 7) then
-        return 8
+        return 7
     elseif (level == 8) then
-        return 9
+        return 8
     elseif (level == 9) then
-        return 10
+        return 9
     elseif (level == 10) then
-        return 12
+        return 10
     endif
     return 1
 endfunction

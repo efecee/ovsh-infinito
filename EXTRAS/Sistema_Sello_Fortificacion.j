@@ -39,7 +39,7 @@ globals
     constant integer AB_GLYPH_ITEM     = 'gfor'  // <-- rawcode real del item
     constant real    AB_GLYPH_DURATION = 30.0    // segundos de invulnerabilidad
     constant integer AB_GLYPH_MAX_USES = 1       // usos por EQUIPO por partida
-    constant integer AB_GLYPH_COST     = 1000    // <-- DEBE igualar el costo en oro del item en el editor (para reembolsar toda compra que no activa el sello)
+    constant integer AB_GLYPH_COST     = 2000    // <-- DEBE igualar el costo en oro del item en el editor (para reembolsar toda compra que no activa el sello)
     // Separadores coloreados por equipo (estilo VOTO_SEP)
     constant string  SF_SEP_HUM = "|cff66B3FF==============================|r"
     constant string  SF_SEP_ORC = "|cffFF3333==========================|r"

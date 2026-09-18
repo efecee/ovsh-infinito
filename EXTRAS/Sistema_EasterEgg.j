@@ -37,8 +37,8 @@ library SistemaEasterEgg initializer Init
         // ==========================================
         // CONFIGURACIÓN DE IDs (Ajustar en el Editor)
         // ==========================================
-        constant integer UNIT_AVE_EASTER_EGG = 'nmdm' // REEMPLAZAR con el rawcode real de la unidad
-        constant integer ITEM_EASTER_EGG     = 'I014' // REEMPLAZAR con el rawcode del objeto a soltar
+        constant integer UNIT_AVE_EASTER_EGG = 'nmdm' // La unidad
+        constant integer ITEM_EASTER_EGG     = 'I014' // El objeto a soltar
         
         // ==========================================
         // CONFIGURACIÓN DE SISTEMA

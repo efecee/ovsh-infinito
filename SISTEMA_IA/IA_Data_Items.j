@@ -1563,8 +1563,8 @@ library IADataItems initializer OnInit
         // No ocupan slot de inventario. Registrados para uso futuro.
 
         // --- Tomo de Experiencia 'texp' ---
-        // 250 oro, consumible instantáneo. +100 XP al héroe.
-        call SaveInteger(itemDb, 'texp', ITEM_FIELD_GOLD_COST, 100)
+        // 200 oro, consumible instantáneo. +100 XP al héroe.
+        call SaveInteger(itemDb, 'texp', ITEM_FIELD_GOLD_COST, 200)
         call SaveInteger(itemDb, 'texp', ITEM_FIELD_SHOP_TYPE, 'n000')
         call SaveInteger(itemDb, 'texp', ITEM_FIELD_TAGS, ITEM_TAG_CONSUMABLE)
 
@@ -1597,7 +1597,7 @@ library IADataItems initializer OnInit
 
         // --- Tomo de nivel ---
         // sube un nivel al heroe que lo compra.
-        call SaveInteger(itemDb, 'I01R', ITEM_FIELD_GOLD_COST, 999)
+        call SaveInteger(itemDb, 'I01R', ITEM_FIELD_GOLD_COST, 1000)
         call SaveInteger(itemDb, 'I01R', ITEM_FIELD_SHOP_TYPE, 'n000')
         call SaveInteger(itemDb, 'I01R', ITEM_FIELD_TAGS, ITEM_TAG_CONSUMABLE)
 

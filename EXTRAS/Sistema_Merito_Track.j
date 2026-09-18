@@ -1,6 +1,10 @@
 //===========================================================================
-// SISTEMA: RASTREO DE ORO (-merito)
+// SISTEMA: RASTREO DE ORO POR BOUNTY
 // Héroes: 500 | Barracas: 450 | Torres: 150 | Tanques: 40 | Creeps: 20
+//
+// El comando -merito (Comando_Merito.j) fue ELIMINADO en v2.1: el total de
+// key 3 ya no lo lee nadie. Lo que SÍ sigue importando es el sync de
+// Eco_GoldBaseline (detector de oro F11, Comandos_Economia.j).
 //===========================================================================
 function Trig_Merito_Track_Actions takes nothing returns nothing
     local unit victim = GetDyingUnit()
@@ -58,8 +62,15 @@ function Trig_Merito_Track_Actions takes nothing returns nothing
             // el asesino justo recibe (o envía) un regalo F11 en el mismo tick, su
             // par −X/+X no se descuadra. (id ya está validado 0-9 arriba.)
             // INVARIANTE: si cambias un bounty en el Object Editor, ajusta el monto
-            // aquí también, o quedará un residuo que descuadra la detección.
-            set Eco_GoldBaseline[id] = Eco_GoldBaseline[id] + goldGained
+            // aquí Y en Sistema_Transmutar.j (NativeBounty, espejo de esta tabla),
+            // o quedará un residuo que descuadra la detección.
+            // EXCEPCIÓN Transmutar: el bounty del OBJETIVO lo paga Sistema_Transmutar.j,
+            // que ya avanza la base (IsPending). Las demás muertes que compensa durante
+            // el vuelo del frasco NO son pendientes: las paga por el mismo monto sin
+            // tocar la base, así que avanzarla aquí sigue siendo correcto.
+            if (not SistemaTransmutar_IsPending(victim)) then
+                set Eco_GoldBaseline[id] = Eco_GoldBaseline[id] + goldGained
+            endif
         endif
     endif
 
