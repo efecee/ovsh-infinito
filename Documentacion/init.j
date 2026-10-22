@@ -362,8 +362,10 @@ function CreateUnitsForPlayer9 takes nothing returns nothing
 	set udg_unit43=CreateUnit(p,'e006',5982.9,-1047.2,164.097)
 endfunction
 
+// Estructuras de cada faccion: son de los ejercitos ocultos (Core_Ejercitos.j),
+// ya no de los jugadores 11 y 12, que quedaron libres para observadores.
 function CreateBuildingsForPlayer10 takes nothing returns nothing
-	local player p=Player(10)
+	local player p=Player(EJERCITO_HUMANO)
 	local unit u
 	local integer unitID
 	local trigger t
@@ -411,7 +413,7 @@ function CreateBuildingsForPlayer10 takes nothing returns nothing
 endfunction
 
 function CreateBuildingsForPlayer11 takes nothing returns nothing
-	local player p=Player(11)
+	local player p=Player(EJERCITO_ORCO)
 	local unit u
 	local integer unitID
 	local trigger t
@@ -841,92 +843,95 @@ function Trig_Acciones_Menu3_MODO_CLASICO_Actions takes nothing returns nothing
 	call DestroyTrigger(GetTriggeringTrigger())
 endfunction
 
+// Orden de marcha de cada creep al nacer en su cripera. Ejercitos_Marchar
+// (Core_Ejercitos.j) le borra la posicion de guardia: sin eso, al pelear lejos
+// de la cripera el motor lo hace volver.
 function Trig_Attack_1_Barracas_1_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(10)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_HUMANO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_Barracas_1_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect38), GetRectCenterY(udg_rect38))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect38), GetRectCenterY(udg_rect38))
 endfunction
 
 function Trig_Attack_1_Blacksmith_1_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(10)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_HUMANO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_Blacksmith_1_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect38), GetRectCenterY(udg_rect38))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect38), GetRectCenterY(udg_rect38))
 endfunction
 
 function Trig_Attack_1_Barracas_2_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(10)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_HUMANO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_Barracas_2_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect39), GetRectCenterY(udg_rect39))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect39), GetRectCenterY(udg_rect39))
 endfunction
 
 function Trig_Attack_1_Blacsmith_2_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(10)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_HUMANO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_Blacsmith_2_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect39), GetRectCenterY(udg_rect39))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect39), GetRectCenterY(udg_rect39))
 endfunction
 
 function Trig_Attack_1_orc_Barracas_2_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(11)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_ORCO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_orc_Barracas_2_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect37), GetRectCenterY(udg_rect37))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect37), GetRectCenterY(udg_rect37))
 endfunction
 
 function Trig_Attack_1_orc_Tauren_2_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(11)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_ORCO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_orc_Tauren_2_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect37), GetRectCenterY(udg_rect37))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect37), GetRectCenterY(udg_rect37))
 endfunction
 
 function Trig_Attack_1_orc_Tauren_1_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(11)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_ORCO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_orc_Tauren_1_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect36), GetRectCenterY(udg_rect36))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect36), GetRectCenterY(udg_rect36))
 endfunction
 
 function Trig_Attack_1_orc_Barracas_1_Conditions takes nothing returns boolean
-	if(not(GetOwningPlayer(GetTriggerUnit())==Player(11)))then
+	if(not(GetOwningPlayer(GetTriggerUnit())==Player(EJERCITO_ORCO)))then
 		return false
 	endif
 	return true
 endfunction
 
 function Trig_Attack_1_orc_Barracas_1_Actions takes nothing returns nothing
-	call IssuePointOrder(GetTriggerUnit(), "attack", GetRectCenterX(udg_rect36), GetRectCenterY(udg_rect36))
+	call Ejercitos_Marchar(GetTriggerUnit(), GetRectCenterX(udg_rect36), GetRectCenterY(udg_rect36))
 endfunction
 
 // DESACTIVADO: First Blood legacy — MIGRADO completamente a Sistema_Kills.j
@@ -1259,20 +1264,20 @@ function Trig_Setup_Players_Actions takes nothing returns nothing
 	set udg_force08=GetPlayersMatching(Condition(function Trig_Setup_Players_Func003002001))
 	set udg_integer04=CountPlayersInForceBJ(udg_force03)
 	call ForForce(udg_force03,function Trig_Setup_Players_Func005A)
-	set udg_force04=GetPlayersAllies(Player(11))
-	call ForceRemovePlayerSimple(Player(11),udg_force04)
+	set udg_force04=GetPlayersAllies(Player(EJERCITO_ORCO))
+	call ForceRemovePlayerSimple(Player(EJERCITO_ORCO),udg_force04)
 	set udg_integer19=CountPlayersInForceBJ(udg_force04)
-	set udg_force06=GetPlayersAllies(Player(11))
-	call ForceRemovePlayerSimple(Player(11),udg_force06)
-	set udg_force09=GetPlayersAllies(Player(11))
-	call ForceRemovePlayerSimple(Player(11),udg_force09)
-	set udg_force05=bj_FORCE_PLAYER[10]
-	call ForceRemovePlayerSimple(Player(11),udg_force05)
+	set udg_force06=GetPlayersAllies(Player(EJERCITO_ORCO))
+	call ForceRemovePlayerSimple(Player(EJERCITO_ORCO),udg_force06)
+	set udg_force09=GetPlayersAllies(Player(EJERCITO_ORCO))
+	call ForceRemovePlayerSimple(Player(EJERCITO_ORCO),udg_force09)
+	set udg_force05=bj_FORCE_PLAYER[EJERCITO_HUMANO]
+	call ForceRemovePlayerSimple(Player(EJERCITO_ORCO),udg_force05)
 	set udg_integer20=CountPlayersInForceBJ(udg_force05)
-	set udg_force07=GetPlayersAllies(Player(10))
-	call ForceRemovePlayerSimple(Player(10),udg_force07)
-	set udg_force10=GetPlayersAllies(Player(10))
-	call ForceRemovePlayerSimple(Player(10),udg_force10)
+	set udg_force07=GetPlayersAllies(Player(EJERCITO_HUMANO))
+	call ForceRemovePlayerSimple(Player(EJERCITO_HUMANO),udg_force07)
+	set udg_force10=GetPlayersAllies(Player(EJERCITO_HUMANO))
+	call ForceRemovePlayerSimple(Player(EJERCITO_HUMANO),udg_force10)
 endfunction
 
 function Trig_Heros_array_Func001A takes nothing returns nothing
@@ -1535,7 +1540,7 @@ function Trig_Human_Footmen_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect19)
 	loop
 		exitwhen i == 4
-		call CreateUnit(Player(10), 'h000', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_HUMANO), 'h000', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1553,7 +1558,7 @@ function Trig_Human_Riflemen_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect19)
 	loop
 		exitwhen i == 2
-		call CreateUnit(Player(10), 'h001', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_HUMANO), 'h001', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1566,7 +1571,7 @@ function Trig_Human_Mountan_Giant_Conditions takes nothing returns boolean
 endfunction
 
 function Trig_Human_Mountan_Giant_Actions takes nothing returns nothing
-	call CreateUnit(Player(10), 'h009', GetRectCenterX(udg_rect20), GetRectCenterY(udg_rect20), bj_UNIT_FACING)
+	call CreateUnit(Player(EJERCITO_HUMANO), 'h009', GetRectCenterX(udg_rect20), GetRectCenterY(udg_rect20), bj_UNIT_FACING)
 endfunction
 
 function Trig_Human_Huntress_Conditions takes nothing returns boolean
@@ -1582,7 +1587,7 @@ function Trig_Human_Huntress_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect21)
 	loop
 		exitwhen i == 2
-		call CreateUnit(Player(10), 'h006', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_HUMANO), 'h006', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1600,7 +1605,7 @@ function Trig_Human_Archer_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect22)
 	loop
 		exitwhen i == 4
-		call CreateUnit(Player(10), 'h007', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_HUMANO), 'h007', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1613,7 +1618,7 @@ function Trig_Human_Mountain_Giant_Conditions takes nothing returns boolean
 endfunction
 
 function Trig_Human_Mountain_Giant_Actions takes nothing returns nothing
-	call CreateUnit(Player(10), 'h009', GetRectCenterX(udg_rect22), GetRectCenterY(udg_rect22), bj_UNIT_FACING)
+	call CreateUnit(Player(EJERCITO_HUMANO), 'h009', GetRectCenterX(udg_rect22), GetRectCenterY(udg_rect22), bj_UNIT_FACING)
 endfunction
 
 // ==================== ORCOS ====================
@@ -1630,7 +1635,7 @@ function Trig_Orcs_Ghoul_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect29)
 	loop
 		exitwhen i == 4
-		call CreateUnit(Player(11), 'o000', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_ORCO), 'o000', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1648,7 +1653,7 @@ function Trig_Orcs_Necremancer_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect29)
 	loop
 		exitwhen i == 2
-		call CreateUnit(Player(11), 'o001', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_ORCO), 'o001', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1661,7 +1666,7 @@ function Trig_Orcs_Tauren_Conditions takes nothing returns boolean
 endfunction
 
 function Trig_Orcs_Tauren_Actions takes nothing returns nothing
-	call CreateUnit(Player(11), 'o002', GetRectCenterX(udg_rect30), GetRectCenterY(udg_rect30), bj_UNIT_FACING)
+	call CreateUnit(Player(EJERCITO_ORCO), 'o002', GetRectCenterX(udg_rect30), GetRectCenterY(udg_rect30), bj_UNIT_FACING)
 endfunction
 
 function Trig_Orcs_Tauren_de_abajo_Conditions takes nothing returns boolean
@@ -1672,7 +1677,7 @@ function Trig_Orcs_Tauren_de_abajo_Conditions takes nothing returns boolean
 endfunction
 
 function Trig_Orcs_Tauren_de_abajo_Actions takes nothing returns nothing
-	call CreateUnit(Player(11), 'o008', GetRectCenterX(udg_rect31), GetRectCenterY(udg_rect31), bj_UNIT_FACING)
+	call CreateUnit(Player(EJERCITO_ORCO), 'o008', GetRectCenterX(udg_rect31), GetRectCenterY(udg_rect31), bj_UNIT_FACING)
 endfunction
 
 function Trig_Orcs_Grunts_Conditions takes nothing returns boolean
@@ -1688,7 +1693,7 @@ function Trig_Orcs_Grunts_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect32)
 	loop
 		exitwhen i == 4
-		call CreateUnit(Player(11), 'o007', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_ORCO), 'o007', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -1706,7 +1711,7 @@ function Trig_Orcs_Shamans_Actions takes nothing returns nothing
 	local real y = GetRectCenterY(udg_rect32)
 	loop
 		exitwhen i == 2
-		call CreateUnit(Player(11), 'o009', x, y, bj_UNIT_FACING)
+		call CreateUnit(Player(EJERCITO_ORCO), 'o009', x, y, bj_UNIT_FACING)
 		set i = i + 1
 	endloop
 endfunction
@@ -2545,8 +2550,8 @@ function Trig_Bounty_Actions takes nothing returns nothing
 	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(7))
 	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(8))
 	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(9))
-	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(10))
-	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(11))
+	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(EJERCITO_HUMANO))
+	call SetPlayerFlagBJ(PLAYER_STATE_GIVES_BOUNTY,true,Player(EJERCITO_ORCO))
 endfunction
 
 

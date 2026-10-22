@@ -243,6 +243,9 @@ function Trig_Techies_Explode takes nothing returns nothing
                 // (Lógica inlineada de MB_RegisterControlTimestamp — evita error de orden de compilación)
                 if (IsUnitType(target, UNIT_TYPE_HERO)) then
                     call SaveReal(udg_MB_Hash, GetPlayerId(GetOwningPlayer(target)), 600 + GetPlayerId(GetOwningPlayer(caster)), TimerGetElapsed(MB_Timer))
+                    if (MB_DEBUG_ASIST) then
+                        call DisplayTimedTextToPlayer(GetOwningPlayer(caster), 0, 0, 15.0, "|cffFFCC00[Asist]|r Control+Bloqueo (Barril) -> " + GetUnitName(target))
+                    endif
                 endif
 
                 // Regla A: Daño reducido si está fuera del radio interno

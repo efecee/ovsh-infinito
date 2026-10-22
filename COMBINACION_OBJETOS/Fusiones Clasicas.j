@@ -12,10 +12,17 @@
 //
 //  NOTA: todas las recetas usan los mismos 2 efectos visuales. Si alguna
 //  fusion usa efectos distintos, avisar para moverlos a la tabla por receta.
+//
+//  MODO RAPIDO (Core_Menu_Modo.j): las 3 armaduras de 5500 NO se fusionan.
+//  Los daños y el Finger se fusionan igual que en el modo normal. Las
+//  armaduras de 3 piezas tienen la misma regla en sus propios detonadores.
 // ============================================================================
 
 // --- Tabla de recetas: ingrediente -> resultado. Retorna 0 si no aplica. ---
 function Fusion_Resultado takes integer ing returns integer
+    if ModoPartida_EsRapido() and ( ing == 'I00U' or ing == 'I00M' or ing == 'I00Q' ) then
+        return 0        // Modo Rapido: ninguna armadura se fusiona
+    endif
     if     ing == 'I00U' then
         return 'I01B'   // Super Armadura Lunar +40    (AGI)
     elseif ing == 'I00M' then

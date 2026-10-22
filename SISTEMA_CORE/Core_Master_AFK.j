@@ -7,12 +7,21 @@
 // Sistema_Voto DIFIERE toda votación hasta que la configuración termina
 // (SistemaVoto_OnMenusFinished al final de EjecutarPostSeleccion), así que
 // durante la fase de menús NUNCA hay encuesta activa. Por eso, si el master
-// sale durante los menús, rotamos DE INMEDIATO y re-ejecutamos Core_Menu_Oro
+// sale durante los menús, rotamos DE INMEDIATO y re-ejecutamos Core_Menu_Modo
 // (esperar al fin del voto sería un deadlock: los menús huérfanos jamás
 // terminarían y la votación diferida jamás se abriría).
+//
+// PRIMERA PANTALLA: Core_Menu_Modo (modo de partida). Con bots esa pantalla
+// no se muestra y la primera visible es la de oro; Core_Menu_Modo lo resuelve
+// solo, así que aquí siempre se re-ejecuta Core_Menu_Modo.
 // PendingRotation/PostVoteCheck quedan como legado no-op (ver abajo).
+//
+// OBSERVADORES: quien puede ser Master lo decide Observadores_PuedeSerMaster
+// (Core_Observadores.j). Con al menos un humano jugando en los slots 1-10,
+// solo ellos, como siempre. En una sala de solo bots, los observadores: con
+// dos, el rol rota entre ellos cada 15 s igual que entre jugadores.
 
-library CoreMasterAFK initializer Init
+library CoreMasterAFK initializer Init requires Observadores
     globals
         private timer   AFK_Timer        = CreateTimer()
         private boolean MasterHasResponded = false
@@ -56,14 +65,14 @@ library CoreMasterAFK initializer Init
     endfunction
 
     // ==========================================================
-    // CONTAR JUGADORES HUMANOS ACTIVOS
+    // CONTAR CANDIDATOS A MASTER (humanos 0-9, u observadores si no hay)
     // ==========================================================
     private function CountHumanPlayers takes nothing returns integer
         local integer i = 0
         local integer count = 0
         loop
-            exitwhen i >= 10
-            if GetPlayerSlotState(Player(i)) == PLAYER_SLOT_STATE_PLAYING and GetPlayerController(Player(i)) == MAP_CONTROL_USER then
+            exitwhen i >= 12
+            if Observadores_PuedeSerMaster(Player(i)) then
                 set count = count + 1
             endif
             set i = i + 1
@@ -72,39 +81,39 @@ library CoreMasterAFK initializer Init
     endfunction
 
     // ==========================================================
-    // BUSCAR SIGUIENTE MASTER HUMANO
+    // BUSCAR SIGUIENTE MASTER (slots 0-11: los observadores son 10-11)
     // Retorna true si encontró uno (o el actual sigue válido).
     // ==========================================================
     private function FindNextMaster takes nothing returns boolean
         local integer currentId = GetPlayerId(udg_Core_JugadorMaestro)
         local integer i = currentId + 1
         local player p
-        
+
         // Buscar hacia abajo
         loop
-            exitwhen i >= 10
+            exitwhen i >= 12
             set p = Player(i)
-            if GetPlayerSlotState(p) == PLAYER_SLOT_STATE_PLAYING and GetPlayerController(p) == MAP_CONTROL_USER then
+            if Observadores_PuedeSerMaster(p) then
                 set udg_Core_JugadorMaestro = p
                 return true
             endif
             set i = i + 1
         endloop
-        
+
         // Dar la vuelta desde arriba
         set i = 0
         loop
             exitwhen i >= currentId
             set p = Player(i)
-            if GetPlayerSlotState(p) == PLAYER_SLOT_STATE_PLAYING and GetPlayerController(p) == MAP_CONTROL_USER then
+            if Observadores_PuedeSerMaster(p) then
                 set udg_Core_JugadorMaestro = p
                 return true
             endif
             set i = i + 1
         endloop
-        
+
         // Verificar si el master actual sigue válido (único jugador)
-        return GetPlayerSlotState(udg_Core_JugadorMaestro) == PLAYER_SLOT_STATE_PLAYING and GetPlayerController(udg_Core_JugadorMaestro) == MAP_CONTROL_USER
+        return Observadores_PuedeSerMaster(udg_Core_JugadorMaestro)
     endfunction
 
     // ==========================================================
@@ -126,10 +135,10 @@ library CoreMasterAFK initializer Init
             endif
         endif
         
-        // Re-ejecutar Core_Menu_Oro: reconstruye el diálogo completo
-        // (con TODOS los botones + título), lo muestra al master actual,
-        // y llama Start() que maneja timer/lock según cantidad de jugadores.
-        call TriggerExecute(gg_trg_Core_Menu_Oro)
+        // Re-ejecutar Core_Menu_Modo: vuelve a la primera pantalla, oculta su
+        // ventana al master anterior, la muestra al actual y llama Start(),
+        // que maneja timer/lock según cantidad de jugadores.
+        call TriggerExecute(gg_trg_Core_Menu_Modo)
     endfunction
     
     // ==========================================================
@@ -137,13 +146,13 @@ library CoreMasterAFK initializer Init
     // ==========================================================
 
     // Valida que el Master actual siga conectado y sea humano; si no, rota
-    // al siguiente. Lo llama Core_Menu_Oro ANTES de mostrar el primer menú:
+    // al siguiente. Lo llama Core_Menu_Modo ANTES de mostrar el primer menú:
     // cubre al Master que cerró durante la pantalla de carga o en el primer
     // segundo (Core_DetectarHost corre a 0.05s; el menú recién a 1.00s).
     // Sin esto, el menú se muestra a un fantasma y nadie puede configurar.
     public function EnsureMasterValid takes nothing returns nothing
         local integer oldId = GetPlayerId(udg_Core_JugadorMaestro)
-        if GetPlayerSlotState(udg_Core_JugadorMaestro) == PLAYER_SLOT_STATE_PLAYING and GetPlayerController(udg_Core_JugadorMaestro) == MAP_CONTROL_USER then
+        if Observadores_PuedeSerMaster(udg_Core_JugadorMaestro) then
             return
         endif
         if FindNextMaster() and GetPlayerId(udg_Core_JugadorMaestro) != oldId then
@@ -173,6 +182,13 @@ library CoreMasterAFK initializer Init
     endfunction
     
     public function Stop takes nothing returns nothing
+        // Idempotente: sin bots, el clic en la pantalla de oro vuelve a llamar
+        // Stop con el juego ya congelado por el clic en la de modo. No repetir
+        // PauseGame (Sistema_Voto.j advierte que tiene límite de usos online).
+        // Start() vuelve a poner MasterHasResponded en false.
+        if MasterHasResponded then
+            return
+        endif
         set MasterHasResponded = true
         call PauseTimer(AFK_Timer)
         // Recongelar el juego ahora que el Master respondió
@@ -207,8 +223,8 @@ library CoreMasterAFK initializer Init
             return
         endif
         
-        // Re-ejecutar Core_Menu_Oro (reconstruye diálogo y llama Start)
-        call TriggerExecute(gg_trg_Core_Menu_Oro)
+        // Re-ejecutar Core_Menu_Modo (primera pantalla; llama Start)
+        call TriggerExecute(gg_trg_Core_Menu_Modo)
     endfunction
     
     // ==========================================================
@@ -233,8 +249,9 @@ library CoreMasterAFK initializer Init
     private function Init takes nothing returns nothing
         local trigger t = CreateTrigger()
         local integer i = 0
+        // Hasta 11: un observador tambien puede ser Master (sala de solo bots).
         loop
-            exitwhen i >= 10
+            exitwhen i >= 12
             call TriggerRegisterPlayerEvent(t, Player(i), EVENT_PLAYER_LEAVE)
             set i = i + 1
         endloop

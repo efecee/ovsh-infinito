@@ -494,6 +494,9 @@ function Hook_Loop_Callback takes nothing returns nothing
                         // (Lógica inlineada de MB_RegisterControlTimestamp — evita error de orden de compilación)
                         if (IsUnitType(firstU, UNIT_TYPE_HERO)) then
                             call SaveReal(udg_MB_Hash, GetPlayerId(GetOwningPlayer(firstU)), 600 + GetPlayerId(ownerP), TimerGetElapsed(MB_Timer))
+                            if (MB_DEBUG_ASIST) then
+                                call DisplayTimedTextToPlayer(ownerP, 0, 0, 15.0, "|cffFFCC00[Asist]|r Control+Bloqueo (Gancho) -> " + GetUnitName(firstU))
+                            endif
                         endif
                     endif
 

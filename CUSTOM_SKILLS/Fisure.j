@@ -259,6 +259,9 @@ scope Fissure initializer Init
                     // (Lógica inlineada de MB_RegisterControlTimestamp — evita error de orden de compilación)
                     if (IsUnitType(u, UNIT_TYPE_HERO)) then
                         call SaveReal(udg_MB_Hash, GetPlayerId(GetOwningPlayer(u)), 600 + GetPlayerId(GetOwningPlayer(caster)), TimerGetElapsed(MB_Timer))
+                        if (MB_DEBUG_ASIST) then
+                            call DisplayTimedTextToPlayer(GetOwningPlayer(caster), 0, 0, 15.0, "|cffFFCC00[Asist]|r Control+Bloqueo (Fisura) -> " + GetUnitName(u))
+                        endif
                     endif
 
                     // Crear dummy con stun en la posición EXACTA del enemigo

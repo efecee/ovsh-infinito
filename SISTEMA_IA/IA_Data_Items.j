@@ -12,7 +12,7 @@
 // PLANTILLA MAESTRA: Ver la Esfera de Hielo 'ofro' como referencia.
 // ==========================================================================
 
-library IADataItems initializer OnInit
+library IADataItems initializer OnInit requires AreaHabilidades
 
     globals
         private hashtable itemDb = null
@@ -35,10 +35,10 @@ library IADataItems initializer OnInit
         constant integer ITEM_FIELD_PROC_SUMMON    = 7   // real: Prob. vs Invocaciones
 
         // --- Propiedades de Área ---
-        // Radio genérico: splash de daño (ofir), aura de equipo (ajen),
-        // revelación (dust), o espinas (I003). El contexto lo da el ítem.
-        // Consumidor: IA_State_Combat (priorizar targets rodeados de enemigos).
-        constant integer ITEM_FIELD_AOE_RADIUS     = 8   // real: Radio de efecto (splash, aura, reveal)
+        // Radio de efecto (splash de daño, aura de equipo, revelación, espinas):
+        // ya NO se guarda aquí. Lo da GetAoeRadius() leyendo la library
+        // AreaHabilidades (Animacion_AoE.j), única fuente de áreas del mapa.
+        // (El campo 8 quedó libre.)
 
         // --- Stock y Disponibilidad ---
         // Consumidor: IA_Brain_Macro (priorizar compra temprana de ítems escasos).
@@ -72,7 +72,7 @@ library IADataItems initializer OnInit
 
         // --- Propiedades de Resurrección ---
         // Consumidor: IA_State_Survival (ajustar agresividad con segunda vida).
-        // Si REVIVE_DELAY > 0 → el ítem otorga resurrección automática.
+        // Si REVIVE_DELAY > 0 ? el ítem otorga resurrección automática.
         // NO crear ITEM_TAG_REVIVE: el campo ya expresa la propiedad.
         constant integer ITEM_FIELD_REVIVE_DELAY   = 24  // real: Segundos antes de revivir
         constant integer ITEM_FIELD_REVIVE_HP      = 25  // real: HP con el que revive
@@ -95,12 +95,12 @@ library IADataItems initializer OnInit
         constant integer ITEM_FIELD_CAST_DAMAGE    = 30  // real: Daño en el impacto
 
         // --- Daño Anti-Invocaciones ---
-        // Consumidor: IA_State_Combat ("¿Enemigo tiene summons? → ¿tengo anti-summon?")
+        // Consumidor: IA_State_Combat ("¿Enemigo tiene summons? ? ¿tengo anti-summon?")
         constant integer ITEM_FIELD_BONUS_DMG_SUMMON = 31 // real: Daño extra a invocaciones
 
         // --- Curación y Regeneración ---
         // Consumidores: IA_State_Survival (pasiva: regen estima supervivencia;
-        //               activa: GetHealAmount > 0 → "tengo cura de emergencia").
+        //               activa: GetHealAmount > 0 ? "tengo cura de emergencia").
         // NO crear ITEM_TAG_HEAL: el campo ya es la señal (mismo que REVIVE_DELAY).
         constant integer ITEM_FIELD_HP_REGEN       = 32  // real: Regeneración de HP/seg pasiva
         constant integer ITEM_FIELD_HEAL_AMOUNT    = 33  // real: Cura instantánea al consumir
@@ -114,14 +114,14 @@ library IADataItems initializer OnInit
 
         // --- Atributos Primarios ---
         // Consumidores: IA_Utils (calculadora de físicas).
-        //   STR → HP + regen HP.  AGI → AS + Armor.  INT → Maná + regen maná.
+        //   STR ? HP + regen HP.  AGI ? AS + Armor.  INT ? Maná + regen maná.
         constant integer ITEM_FIELD_BONUS_STR      = 36  // integer: +X Fuerza
         constant integer ITEM_FIELD_BONUS_AGI      = 37  // integer: +X Agilidad
         constant integer ITEM_FIELD_BONUS_INT      = 38  // integer: +X Inteligencia
 
         // --- Evasión ---
         // Consumidor: IA_Utils (calculadora de físicas: EHP efectivo),
-        //             IA_State_Shopping ("¿Enemigo es melee/físico? → evasión vale").
+        //             IA_State_Shopping ("¿Enemigo es melee/físico? ? evasión vale").
         constant integer ITEM_FIELD_EVASION_PCT    = 39  // real: % de esquivar ataques (0.14 = 14%)
 
         // --- Velocidad de Movimiento ---
@@ -153,8 +153,8 @@ library IADataItems initializer OnInit
 
         // --- Estado de Transformación ---
         // Consumidor: IA_State_Combat / IA_State_Shopping.
-        //   "Tengo Power Treads en INT pero soy STR → clic N veces."
-        //   Cadena circular: I017 → I019 → I018 → I017.
+        //   "Tengo Power Treads en INT pero soy STR ? clic N veces."
+        //   Cadena circular: I017 ? I019 ? I018 ? I017.
         constant integer ITEM_FIELD_NEXT_STATE     = 46  // integer: ID del ítem al hacer clic
 
         // --- Daño Porcentual Pasivo ---
@@ -187,40 +187,40 @@ library IADataItems initializer OnInit
         constant integer ITEM_TAG_AOE              = 2048  // Daño en área (splash). Priorizar targets rodeados.
 
         // --- Tipo de activación ---
-        // Si tiene BUFF_ID + ACTIVE → el buff se aplica al CASTEAR (click en target).
-        // Si tiene BUFF_ID sin ACTIVE → el buff se aplica al GOLPEAR (on-hit/orbe).
+        // Si tiene BUFF_ID + ACTIVE ? el buff se aplica al CASTEAR (click en target).
+        // Si tiene BUFF_ID sin ACTIVE ? el buff se aplica al GOLPEAR (on-hit/orbe).
         constant integer ITEM_TAG_ACTIVE           = 4096  // Requiere activación manual (clic)
 
         // --- Visión e inteligencia ---
-        // Consumidor: IA_State_Combat ("¿Enemigo invisible? → ¿tengo REVEAL?")
+        // Consumidor: IA_State_Combat ("¿Enemigo invisible? ? ¿tengo REVEAL?")
         constant integer ITEM_TAG_REVEAL           = 8192  // Revela unidades invisibles
 
         // --- Tipo de targeting ---
         // Consumidor: IA_State_Combat (qué native de WC3 emitir).
-        // CAST_RANGE=0 → Self-cast (UseItemNoTarget).
-        // CAST_RANGE>0 sin POINT_TARGET → Unit-Target (UseItemTarget).
-        // CAST_RANGE>0 con POINT_TARGET → Point-Target (UseItemPoint).
+        // CAST_RANGE=0 ? Self-cast (UseItemNoTarget).
+        // CAST_RANGE>0 sin POINT_TARGET ? Unit-Target (UseItemTarget).
+        // CAST_RANGE>0 con POINT_TARGET ? Point-Target (UseItemPoint).
         constant integer ITEM_TAG_POINT_TARGET     = 16384 // Se lanza a coordenadas X/Y
 
         // --- Interacción con sistema de buffs ---
         // Consumidor: IA_State_Combat (consulta cruzada con IA_Data_Buffs).
         // Flujo emergente: aliado tiene buff TAG_DEBUFF (no TAG_STUN)
-        //   → buscar ITEM_TAG_PURGE en inventario → usar para limpiar.
+        //   ? buscar ITEM_TAG_PURGE en inventario ? usar para limpiar.
         constant integer ITEM_TAG_PURGE            = 32768 // Disipa buffs/debuffs en el área
 
         // --- Restricción de tipo de ataque ---
         // Consumidor: IA_State_Shopping.
-        //   if HasTag(itemId, ITEM_TAG_MELEE_ONLY) and IsRanged(hero) → NO comprar.
-        //   if HasTag(itemId, ITEM_TAG_RANGED_ONLY) and IsMelee(hero) → NO comprar.
+        //   if HasTag(itemId, ITEM_TAG_MELEE_ONLY) and IsRanged(hero) ? NO comprar.
+        //   if HasTag(itemId, ITEM_TAG_RANGED_ONLY) and IsMelee(hero) ? NO comprar.
         // También aplica a la evaluación de equipo:
-        //   "¿Mi equipo es mayormente ranged? → MELEE_ONLY vale menos."
+        //   "¿Mi equipo es mayormente ranged? ? MELEE_ONLY vale menos."
         constant integer ITEM_TAG_MELEE_ONLY       = 65536  // Solo beneficia a unidades melee
         constant integer ITEM_TAG_RANGED_ONLY      = 131072 // Solo beneficia a unidades ranged
 
         // --- Prioridad de compra ---
         // Consumidor: IA_State_Shopping.
-        //   Regla 1: if HasTag(itemId, ITEM_TAG_CORE) and !TengoCore() → comprar PRIMERO.
-        //   Regla 2: if HasTag(itemId, ITEM_TAG_BOOTS) and YaTengoBotas() → NO comprar.
+        //   Regla 1: if HasTag(itemId, ITEM_TAG_CORE) and !TengoCore() ? comprar PRIMERO.
+        //   Regla 2: if HasTag(itemId, ITEM_TAG_BOOTS) and YaTengoBotas() ? NO comprar.
         constant integer ITEM_TAG_CORE             = 262144  // Obligatorio comprar al inicio
         constant integer ITEM_TAG_BOOTS            = 524288  // Solo 1 par de botas por héroe
 
@@ -233,7 +233,7 @@ library IADataItems initializer OnInit
 
         // --- Protección mágica pasiva ---
         // Consumidor: IA_State_Combat ("soy inmune a un hechizo
-        // dirigido → puedo ser más agresivo").
+        // dirigido ? puedo ser más agresivo").
         // NO registrar cooldown del bloqueo: es interno de WC3,
         // la IA no puede controlarlo ni consultarlo.
         constant integer ITEM_TAG_SPELL_BLOCK      = 4194304  // Bloquea 1 hechizo dirigido
@@ -274,9 +274,10 @@ library IADataItems initializer OnInit
         return LoadInteger(itemDb, itemId, ITEM_FIELD_LUMBER_COST)
     endfunction
 
-    // Obtener radio de salpicadura (AoE). Retorna 0.0 si no tiene splash.
+    // Obtener radio de efecto (AoE) del ítem. Retorna 0.0 si no tiene área.
+    // Sale de AreaHabilidades_RadioItem (Animacion_AoE.j).
     public function GetAoeRadius takes integer itemId returns real
-        return LoadReal(itemDb, itemId, ITEM_FIELD_AOE_RADIUS)
+        return AreaHabilidades_RadioItem(itemId)
     endfunction
 
     // Obtener stock máximo por tienda. Retorna 0 si es ilimitado.
@@ -560,7 +561,7 @@ library IADataItems initializer OnInit
 
         // ==========================================================
         //  PLANTILLA MAESTRA 3 — ESFERA DE RAYO 'oli2'
-        //  Primer ítem con buff de DOBLE FASE (Stun → Slow).
+        //  Primer ítem con buff de DOBLE FASE (Stun ? Slow).
         //
         //  DECISIONES ARQUITECTÓNICAS:
         //  1. +150 daño a invocados: Registrado en BONUS_DMG_SUMMON.
@@ -594,7 +595,7 @@ library IADataItems initializer OnInit
         // --- Esfera de Oscuridad 'odef' ---
         // +6 daño, 100 oro, Orbe. Invoca un Dark Minion al matar (buff 'BNba').
         // DECISIÓN: NO registramos BNba ni creamos tags de invocación.
-        //   - BNba no modifica AS/MS/stats → la calculadora no tiene nada que leer.
+        //   - BNba no modifica AS/MS/stats ? la calculadora no tiene nada que leer.
         //   - El minion es débil, muere rápido, y WC3 lo controla automáticamente.
         //   - Crear ITEM_TAG_SUMMON sin un consumidor que lo lea = basura arquitectónica.
         // Para la IA de shopping: simplemente un orbe barato con daño y anti-aéreo.
@@ -608,27 +609,26 @@ library IADataItems initializer OnInit
         // DECISIÓN: NO registramos el buff (Blpb/BIpb/Blpd/BIpd).
         //   - El ID del buff es ambiguo (L vs I) y bugeado en el editor.
         //   - 54 daño total es irrelevante para cálculos de combate.
-        //   - Nadie lo compra → no merece columnas nuevas (BUFF_FIELD_DPS).
+        //   - Nadie lo compra ? no merece columnas nuevas (BUFF_FIELD_DPS).
         // UNIQUE_HERO: solo 1 por héroe, sin restricción de equipo.
         call SaveReal(itemDb, 'oven', ITEM_FIELD_FLAT_DAMAGE, 5.0)
         call SaveInteger(itemDb, 'oven', ITEM_FIELD_GOLD_COST, 300)
         call SaveInteger(itemDb, 'oven', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_ORB_EFFECT + ITEM_TAG_GRANTS_AA + ITEM_TAG_UNIQUE_HERO)
 
         // --- Esfera de Fuego 'ofir' ---
-        // +25 daño, 1000 oro, Orbe con splash (radio 140). Stock: 1 por tienda.
+        // +25 daño, 800 oro, Orbe con splash (radio 140). Stock: 1 por tienda.
         // DECISIONES:
-        //   - AOE_RADIUS = 140: la IA priorizará targets rodeados de creeps.
+        //   - Radio de splash (en AreaHabilidades): la IA priorizará targets rodeados de creeps.
         //   - NO hay AOE_DAMAGE separado: el splash = FLAT_DAMAGE (25).
         //   - NO hay buff: el fuego no aplica debuff con nombre.
         //   - MAX_STOCK = 1: Solo 1 por tienda (2 en todo el mapa).
         //     La IA de shopping calculará:
         //       prioridad = (valor / gold_cost) × (1 / max_stock)
-        //     Si max_stock=1 y valor alto → prioridad se dispara sola.
+        //     Si max_stock=1 y valor alto ? prioridad se dispara sola.
         //   - NO necesita TAG_RUSH/TAG_CONTESTED (YAGNI): esas son
         //     ESTRATEGIAS de IA_Brain_Macro, no DATOS del ítem.
         call SaveReal(itemDb, 'ofir', ITEM_FIELD_FLAT_DAMAGE, 25.0)
-        call SaveInteger(itemDb, 'ofir', ITEM_FIELD_GOLD_COST, 1000)
-        call SaveReal(itemDb, 'ofir', ITEM_FIELD_AOE_RADIUS, 140.0)
+        call SaveInteger(itemDb, 'ofir', ITEM_FIELD_GOLD_COST, 800)
         call SaveInteger(itemDb, 'ofir', ITEM_FIELD_MAX_STOCK, 1)
         call SaveInteger(itemDb, 'ofir', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_ORB_EFFECT + ITEM_TAG_GRANTS_AA + ITEM_TAG_AOE)
 
@@ -644,7 +644,7 @@ library IADataItems initializer OnInit
         //  3. SIN stats pasivos: NO tiene FLAT_DAMAGE ni ATTACK_SPEED.
         //     Solo ocupa slot de inventario.
         //  4. Campos activos (CAST_RANGE, MANA_COST, COOLDOWN): WC3
-        //     1.27b no tiene natives para leerlos → los guardamos aquí.
+        //     1.27b no tiene natives para leerlos ? los guardamos aquí.
         //  5. Draft logic (comprar solo si falta stun aliado o hay
         //     Blademaster enemigo): pertenece a IA_State_Shopping,
         //     NO a la base de datos. Aquí solo van DATOS puros.
@@ -678,7 +678,7 @@ library IADataItems initializer OnInit
         //     Si un futuro ítem revive con maná distinto, se crea.
         //  4. 'Compra de pánico': es ESTRATEGIA de IA_State_Survival,
         //     no dato del ítem. La IA detectará "HP bajo + cerca de
-        //     tienda + oro suficiente → comprar Ankh".
+        //     tienda + oro suficiente ? comprar Ankh".
         // ==========================================================
 
         // --- Ankh de Reencarnación 'ankh' ---
@@ -690,31 +690,30 @@ library IADataItems initializer OnInit
         call SaveInteger(itemDb, 'ankh', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE + ITEM_TAG_CONSUMABLE)
 
         // --- Book of the Siege 'I002' ---
-        // 450 oro, consumible activo. Invoca 5x Tirador de Sables (ebal).
+        // 250 oro, consumible activo. Invoca 5x Tirador de Sables (ebal).
         // Duran 300s, daño de área (~50 c/u). Glass cannons para asedio.
         // DECISIÓN: NO registramos datos de invocación (YAGNI).
         //   - SUMMON_UNIT_ID, SUMMON_COUNT, SUMMON_DURATION: sin consumidor.
         //   - La lógica "comprar solo si enemigos muertos/empujando"
         //     es ESTRATEGIA de IA_Brain_Macro, no dato del ítem.
         //   - Cuando exista lógica de asedio, se agregan los campos.
-        call SaveInteger(itemDb, 'I002', ITEM_FIELD_GOLD_COST, 450)
+        call SaveInteger(itemDb, 'I002', ITEM_FIELD_GOLD_COST, 250)
         call SaveInteger(itemDb, 'I002', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_ACTIVE + ITEM_TAG_CONSUMABLE)
 
         // --- Polvo de Aparición 'dust' ---
-        // 75 oro, consumible activo (2 cargas). Revela invisibles (AoE 1000).
+        // 100 oro, consumible activo (2 cargas). Revela invisibles (AoE 1000).
         // DECISIONES:
         //   - CHARGES: YAGNI. WC3 native GetItemCharges(item) lo lee en runtime.
         //   - CAST_RANGE = 0: Implica self-cast (No-Target). La IA deduce:
         //     if GetCastRange == 0 then UseItemNoTarget() else UseItemOnTarget()
         //     NO necesita ITEM_TAG_NO_TARGET.
-        //   - AOE_RADIUS = 1000: Radio de revelación, no de daño.
+        //   - Su radio (en AreaHabilidades) es de revelación, no de daño.
         //   - BUFF_ID = 'Bdet': Registrado en IA_Data_Buffs con TAG_REVEAL.
-        //     Consumidor: IA_State_Survival ("tengo Bdet → soy visible,
+        //     Consumidor: IA_State_Survival ("tengo Bdet ? soy visible,
         //     Wind Walk no servirá para escapar").
         call SaveInteger(itemDb, 'dust', ITEM_FIELD_BUFF_ID, 'Bdet')
-        call SaveInteger(itemDb, 'dust', ITEM_FIELD_GOLD_COST, 75)
+        call SaveInteger(itemDb, 'dust', ITEM_FIELD_GOLD_COST, 100)
         call SaveReal(itemDb, 'dust', ITEM_FIELD_COOLDOWN, 20.0)
-        call SaveReal(itemDb, 'dust', ITEM_FIELD_AOE_RADIUS, 1000.0)
         call SaveReal(itemDb, 'dust', ITEM_FIELD_CAST_RANGE, 0.0)
         // Táctica: Utilidad + Activo + Consumible + Revelar
         call SaveInteger(itemDb, 'dust', ITEM_FIELD_TAGS, ITEM_TAG_UTILITY + ITEM_TAG_ACTIVE + ITEM_TAG_CONSUMABLE + ITEM_TAG_REVEAL)
@@ -739,13 +738,13 @@ library IADataItems initializer OnInit
         //  DECISIONES ARQUITECTÓNICAS:
         //  1. POINT_TARGET: La IA emitirá UnitUseItemPoint(u, item, x, y).
         //     Tri-estado completo de targeting:
-        //       CAST_RANGE=0           → Self-cast (dust)
-        //       CAST_RANGE>0           → Unit-Target (Hex)
-        //       CAST_RANGE>0 + PT tag  → Point-Target (infs)
+        //       CAST_RANGE=0           ? Self-cast (dust)
+        //       CAST_RANGE>0           ? Unit-Target (Hex)
+        //       CAST_RANGE>0 + PT tag  ? Point-Target (infs)
         //  2. STUN_HERO/UNIT en el ÍTEM: El stun es genérico/compartido,
         //     no tiene buff propio. Los tiempos van aquí, no en buffDb.
         //  3. CAST_DAMAGE: 50 de daño al impacto. Diferente de FLAT_DAMAGE.
-        //     Consumidor: lethal check ("¿enemigo tiene <50 HP? → Piedra").
+        //     Consumidor: lethal check ("¿enemigo tiene <50 HP? ? Piedra").
         //  4. Invocación del Infernal: YAGNI (mismo que I002/odef).
         //     WC3 lo controla automáticamente. Body-block es micro-estrategia.
         // ==========================================================
@@ -754,7 +753,6 @@ library IADataItems initializer OnInit
         // 500 oro, consumible activo point-target. Stun AoE + 50 daño.
         call SaveInteger(itemDb, 'infs', ITEM_FIELD_GOLD_COST, 500)
         call SaveReal(itemDb, 'infs', ITEM_FIELD_CAST_RANGE, 900.0)
-        call SaveReal(itemDb, 'infs', ITEM_FIELD_AOE_RADIUS, 250.0)
         call SaveReal(itemDb, 'infs', ITEM_FIELD_CAST_DAMAGE, 50.0)
         call SaveReal(itemDb, 'infs', ITEM_FIELD_STUN_HERO, 2.0)
         call SaveReal(itemDb, 'infs', ITEM_FIELD_STUN_UNIT, 4.0)
@@ -762,15 +760,15 @@ library IADataItems initializer OnInit
         call SaveInteger(itemDb, 'infs', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_ACTIVE + ITEM_TAG_CONSUMABLE + ITEM_TAG_HARD_CC + ITEM_TAG_POINT_TARGET + ITEM_TAG_AOE)
 
         // --- Libro de los Muertos 'fgsk' ---
-        // 450 oro, consumible activo self-cast. Invoca esqueletos (basura actual).
+        // 500 oro, consumible activo self-cast. Invoca esqueletos (basura actual).
         // DECISIONES:
         //   - ZERO-VALUE LOGIC: Sin OFFENSIVE/DEFENSIVE/UTILITY.
         //     La fórmula de shopping: prioridad = (tags_valor × stats) / gold.
-        //     tags_valor = 0 → prioridad = 0 → la IA lo ignora naturalmente.
+        //     tags_valor = 0 ? prioridad = 0 ? la IA lo ignora naturalmente.
         //     NO necesita ITEM_TAG_TRASH. Cuando se balancee, agregar
         //     ITEM_TAG_OFFENSIVE y la IA empezará a considerarlo.
         //   - Invocaciones: YAGNI (mismo que I002/odef).
-        call SaveInteger(itemDb, 'fgsk', ITEM_FIELD_GOLD_COST, 450)
+        call SaveInteger(itemDb, 'fgsk', ITEM_FIELD_GOLD_COST, 500)
         call SaveReal(itemDb, 'fgsk', ITEM_FIELD_CAST_RANGE, 0.0)
         call SaveInteger(itemDb, 'fgsk', ITEM_FIELD_TAGS, ITEM_TAG_ACTIVE + ITEM_TAG_CONSUMABLE)
 
@@ -779,15 +777,14 @@ library IADataItems initializer OnInit
         // DECISIONES:
         //   - BONUS_DMG_SUMMON = 1000: One-shot a invocaciones.
         //   - ITEM_TAG_PURGE: Habilita consulta cruzada con buffDb.
-        //     IA_State_Combat: "aliado tiene TAG_DEBUFF (no STUN) →
-        //     ¿tengo PURGE? → apuntar AoE al aliado → limpiar".
+        //     IA_State_Combat: "aliado tiene TAG_DEBUFF (no STUN) ?
+        //     ¿tengo PURGE? ? apuntar AoE al aliado ? limpiar".
         //   - Fusión de cargas: YAGNI. WC3 lo hace automáticamente.
         //   - Contra-juego Etéreo: emerge de tags existentes.
         //     Desterrar tendrá TAG_DEBUFF en buffDb + esta varita tiene
-        //     ITEM_TAG_PURGE → la IA descubre la sinergia sola.
+        //     ITEM_TAG_PURGE ? la IA descubre la sinergia sola.
         call SaveInteger(itemDb, 'wneg', ITEM_FIELD_GOLD_COST, 200)
         call SaveReal(itemDb, 'wneg', ITEM_FIELD_CAST_RANGE, 800.0)
-        call SaveReal(itemDb, 'wneg', ITEM_FIELD_AOE_RADIUS, 325.0)
         call SaveReal(itemDb, 'wneg', ITEM_FIELD_COOLDOWN, 7.0)
         call SaveReal(itemDb, 'wneg', ITEM_FIELD_BONUS_DMG_SUMMON, 1000.0)
         // Táctica: Utilidad + Activo + Consumible + Point-Target + AoE + Purga
@@ -798,7 +795,7 @@ library IADataItems initializer OnInit
         // DECISIONES:
         //   - HP_REGEN = 1.0: Calculadora pasiva de supervivencia.
         //   - HEAL_AMOUNT = 500: IA_State_Survival lo detecta con
-        //     GetHealAmount > 0 → "tengo burst heal de emergencia".
+        //     GetHealAmount > 0 ? "tengo burst heal de emergencia".
         //   - Sin ITEM_TAG_HEAL: el campo ya es la señal.
         //   - Sin HEAL_THRESHOLD: la heurística "cuándo comer la piedra"
         //     vive en IA_State_Survival, no en la base de datos.
@@ -812,16 +809,16 @@ library IADataItems initializer OnInit
         // ==========================================================
         // ESPACIO PARA FUTUROS ÍTEMS
         // Plantillas de referencia:
-        //   Orbe pasivo      → ver 'ofro' (Plantilla Maestra 1)
-        //   Orbe RNG         → ver 'oslo' (Plantilla Maestra 2)
-        //   Orbe dual-CC     → ver 'oli2' (Plantilla Maestra 3)
-        //   Ítem activo      → ver 'I01G' (Plantilla Maestra 4)
-        //   Consumible pasivo→ ver 'ankh' (Plantilla Maestra 5)
-        //   Consumible reveal→ ver 'dust' (Plantilla Maestra 6)
-        //   Pasivo defensivo → ver 'shen' (Plantilla Maestra 7)
-        //   Point-target CC  → ver 'infs' (Plantilla Maestra 8)
-        //   Point-target purge→ ver 'wneg' (Plantilla Maestra 9)
-        //   Híbrido pasivo+heal→ ver 'hlst' (Plantilla Maestra 10)
+        //   Orbe pasivo      ? ver 'ofro' (Plantilla Maestra 1)
+        //   Orbe RNG         ? ver 'oslo' (Plantilla Maestra 2)
+        //   Orbe dual-CC     ? ver 'oli2' (Plantilla Maestra 3)
+        //   Ítem activo      ? ver 'I01G' (Plantilla Maestra 4)
+        //   Consumible pasivo? ver 'ankh' (Plantilla Maestra 5)
+        //   Consumible reveal? ver 'dust' (Plantilla Maestra 6)
+        //   Pasivo defensivo ? ver 'shen' (Plantilla Maestra 7)
+        //   Point-target CC  ? ver 'infs' (Plantilla Maestra 8)
+        //   Point-target purge? ver 'wneg' (Plantilla Maestra 9)
+        //   Híbrido pasivo+heal? ver 'hlst' (Plantilla Maestra 10)
         // ==========================================================
 
         // --- Piedra de Maná 'mnst' ---
@@ -829,10 +826,10 @@ library IADataItems initializer OnInit
         // DECISIONES:
         //   - MANA_REGEN_PCT = 0.25: Porcentual (no plano como HP_REGEN).
         //   - RESTORE_MANA = 300: IA_State_Combat/Survival detectan
-        //     GetRestoreMana > 0 → "tengo recarga de maná de emergencia".
+        //     GetRestoreMana > 0 ? "tengo recarga de maná de emergencia".
         //   - Counter-pick vs Mago Sanguinario: estrategia de draft
         //     en IA_State_Shopping, no dato del ítem.
-        //   - Fall-off: la IA calcula 300 / costo_habilidad → si < 1 uso,
+        //   - Fall-off: la IA calcula 300 / costo_habilidad ? si < 1 uso,
         //     prioridad baja naturalmente.
         call SaveInteger(itemDb, 'mnst', ITEM_FIELD_GOLD_COST, 450)
         call SaveReal(itemDb, 'mnst', ITEM_FIELD_MANA_REGEN_PCT, 0.25)
@@ -844,7 +841,7 @@ library IADataItems initializer OnInit
         // --- Hacha de Ataque +25 'I008' ---
         // 1500 oro, pasivo. +25 daño, +3 STR, +1 AGI, +1 INT.
         // DECISIONES:
-        //   - Es COMPONENTE de receta (1500 → 3000 → 4500).
+        //   - Es COMPONENTE de receta (1500 ? 3000 ? 4500).
         //     Sin RECIPE_RESULT ni RECIPE_COUNT: esos van en el
         //     ítem fusionado futuro que apuntará a este ID.
         //   - Primer ítem con atributos primarios mixtos.
@@ -940,7 +937,6 @@ library IADataItems initializer OnInit
         //   - "No comprar si hay Tauren aliado": IA_State_Shopping.
         call SaveInteger(itemDb, 'ajen', ITEM_FIELD_BUFF_ID, 'BOae')
         call SaveInteger(itemDb, 'ajen', ITEM_FIELD_GOLD_COST, 800)
-        call SaveReal(itemDb, 'ajen', ITEM_FIELD_AOE_RADIUS, 900.0)
         call SaveInteger(itemDb, 'ajen', ITEM_FIELD_TAGS, ITEM_TAG_UTILITY + ITEM_TAG_UNIQUE_TEAM)
 
         // --- Flauta de Alleria 'afac' ---
@@ -952,11 +948,10 @@ library IADataItems initializer OnInit
         //   - "No comprar si 'la gata' está en el equipo": IA_State_Shopping.
         call SaveInteger(itemDb, 'afac', ITEM_FIELD_BUFF_ID, 'BEar')
         call SaveInteger(itemDb, 'afac', ITEM_FIELD_GOLD_COST, 400)
-        call SaveReal(itemDb, 'afac', ITEM_FIELD_AOE_RADIUS, 900.0)
         call SaveInteger(itemDb, 'afac', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_UNIQUE_TEAM + ITEM_TAG_RANGED_ONLY)
 
         // --- Campanillas de hueso del Azote 'sbch' ---
-        // 450 oro, aura pasiva. +10% lifesteal a aliados melee en 900 AoE.
+        // 450 oro, aura pasiva. +13% lifesteal a aliados melee en 900 AoE.
         // DECISIONES:
         //   - LIFESTEAL_PCT va en el BUFF (BUav), no en el ítem.
         //   - UNIQUE_TEAM: solo 1 por equipo.
@@ -964,7 +959,6 @@ library IADataItems initializer OnInit
         //   - No stackea con Vampiric Aura (orco): IA_State_Shopping.
         call SaveInteger(itemDb, 'sbch', ITEM_FIELD_BUFF_ID, 'BUav')
         call SaveInteger(itemDb, 'sbch', ITEM_FIELD_GOLD_COST, 450)
-        call SaveReal(itemDb, 'sbch', ITEM_FIELD_AOE_RADIUS, 900.0)
         call SaveInteger(itemDb, 'sbch', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_UNIQUE_TEAM + ITEM_TAG_MELEE_ONLY)
 
         // --- Tambores de Guerra 1 'I01J' ---
@@ -975,7 +969,6 @@ library IADataItems initializer OnInit
         //   - MELEE_ONLY: solo beneficia a unidades cuerpo a cuerpo.
         call SaveInteger(itemDb, 'I01J', ITEM_FIELD_BUFF_ID, 'B00R')
         call SaveInteger(itemDb, 'I01J', ITEM_FIELD_GOLD_COST, 400)
-        call SaveReal(itemDb, 'I01J', ITEM_FIELD_AOE_RADIUS, 1000.0)
         call SaveInteger(itemDb, 'I01J', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_UNIQUE_TEAM + ITEM_TAG_MELEE_ONLY)
 
         // --- Legión el Cuerno del Apocalipsis 'lgdh' ---
@@ -987,15 +980,14 @@ library IADataItems initializer OnInit
         //   - Sinergia con Janggo (ajen): ambos dan MS, se suman.
         call SaveInteger(itemDb, 'lgdh', ITEM_FIELD_BUFF_ID, 'BUau')
         call SaveInteger(itemDb, 'lgdh', ITEM_FIELD_GOLD_COST, 800)
-        call SaveReal(itemDb, 'lgdh', ITEM_FIELD_AOE_RADIUS, 900.0)
         call SaveInteger(itemDb, 'lgdh', ITEM_FIELD_TAGS, ITEM_TAG_UTILITY + ITEM_TAG_UNIQUE_TEAM)
 
         // --- Talismán de Evasión 'evtl' ---
-        // 400 oro, pasivo. 14% de esquivar ataques. Solo beneficia al portador.
+        // 400 oro, pasivo. 13% de esquivar ataques. Solo beneficia al portador.
         // DECISIONES:
         //   - Sin buff: no aplica aura ni efecto visible.
         //   - No stackea con Evasion innata: IA_State_Shopping.
-        call SaveReal(itemDb, 'evtl', ITEM_FIELD_EVASION_PCT, 0.14)
+        call SaveReal(itemDb, 'evtl', ITEM_FIELD_EVASION_PCT, 0.13)
         call SaveInteger(itemDb, 'evtl', ITEM_FIELD_GOLD_COST, 400)
         call SaveInteger(itemDb, 'evtl', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE + ITEM_TAG_UNIQUE_HERO)
 
@@ -1027,7 +1019,7 @@ library IADataItems initializer OnInit
         // --- Guantes de Presteza 'gcel' ---
         // 300 oro, pasivo. +25% AS. Stat stick de early game.
         // Nota: En late game, héroes AGI alcanzan AS Cap (+400%)
-        // y este ítem se vuelve obsoleto → IA_State_Shopping evalúa.
+        // y este ítem se vuelve obsoleto ? IA_State_Shopping evalúa.
         call SaveReal(itemDb, 'gcel', ITEM_FIELD_ATTACK_SPEED, 0.25)
         call SaveInteger(itemDb, 'gcel', ITEM_FIELD_GOLD_COST, 300)
         call SaveInteger(itemDb, 'gcel', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE)
@@ -1035,7 +1027,7 @@ library IADataItems initializer OnInit
         // --- Mano del Rey 'I01Q' ---
         // Pasivo. +200% AS. Mismo patrón que gcel pero ×8 valor.
         call SaveReal(itemDb, 'I01Q', ITEM_FIELD_ATTACK_SPEED, 3.50)
-        call SaveInteger(itemDb, 'I01Q', ITEM_FIELD_GOLD_COST, 4500)
+        call SaveInteger(itemDb, 'I01Q', ITEM_FIELD_GOLD_COST, 3000)
         call SaveInteger(itemDb, 'I01Q', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE)
 
         // --- Robe of the Magi 'ciri' ---
@@ -1054,7 +1046,7 @@ library IADataItems initializer OnInit
         // 5500 oro, pasivo. +20 Armor, +2000 HP, +1200 MP, +12 AGI.
         // Híbrido defensivo/ofensivo. Ingrediente de Tier Alto.
         // NOTA: Aunque da +12 AGI (ofensivo incidental), su propósito
-        // absoluto es supervivencia → estrictamente DEFENSIVE.
+        // absoluto es supervivencia ? estrictamente DEFENSIVE.
         call SaveReal(itemDb, 'I00U', ITEM_FIELD_ARMOR, 20.0)
         call SaveReal(itemDb, 'I00U', ITEM_FIELD_BONUS_HP, 2000.0)
         call SaveReal(itemDb, 'I00U', ITEM_FIELD_BONUS_MP, 1200.0)
@@ -1191,7 +1183,7 @@ library IADataItems initializer OnInit
         call SaveInteger(itemDb, 'I00T', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE)
 
         // --- Critical Sword 'I004' ---
-        // 3500 oro + 10 madera, pasivo. 30% crítico a x2.0 daño.
+        // 3700 oro, pasivo. 30% crítico a x2.0 daño.
         // DECISIONES:
         //   - OFFENSIVE: puro daño, escala con AGI.
         //   - NO PROC_CHANCE: el crítico es una estadística pasiva de DPS,
@@ -1199,18 +1191,18 @@ library IADataItems initializer OnInit
         //     lo integra matemáticamente como valor esperado.
         call SaveReal(itemDb, 'I004', ITEM_FIELD_CRIT_CHANCE, 0.30)
         call SaveReal(itemDb, 'I004', ITEM_FIELD_CRIT_MULTIPLIER, 2.0)
-        call SaveInteger(itemDb, 'I004', ITEM_FIELD_GOLD_COST, 3500)
+        call SaveInteger(itemDb, 'I004', ITEM_FIELD_GOLD_COST, 3700)
         call SaveInteger(itemDb, 'I004', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_UNIQUE_HERO)
 
         // --- Corazón de Bloodfeather 'bfhr' ---
-        // 2500 oro, pasivo. +2000 HP. Puro tanque.
-        call SaveReal(itemDb, 'bfhr', ITEM_FIELD_BONUS_HP, 2000.0)
+        // 2500 oro, pasivo. +3000 HP. Puro tanque.
+        call SaveReal(itemDb, 'bfhr', ITEM_FIELD_BONUS_HP, 3000.0)
         call SaveInteger(itemDb, 'bfhr', ITEM_FIELD_GOLD_COST, 2500)
         call SaveInteger(itemDb, 'bfhr', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE)
 
         // --- Escudo de Arcanita 'arsh' ---
-        // 3000 oro, pasivo. +35 Armor. Puro tanque físico.
-        call SaveReal(itemDb, 'arsh', ITEM_FIELD_ARMOR, 35.0)
+        // 3000 oro, pasivo. +40 Armor. Puro tanque físico.
+        call SaveReal(itemDb, 'arsh', ITEM_FIELD_ARMOR, 40.0)
         call SaveInteger(itemDb, 'arsh', ITEM_FIELD_GOLD_COST, 3000)
         call SaveInteger(itemDb, 'arsh', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE)
 
@@ -1235,7 +1227,6 @@ library IADataItems initializer OnInit
         //     intentaría clicarlo. El CD es interno de WC3.
         //   - DEFENSIVE: su propósito absoluto es no morir.
         call SaveInteger(itemDb, 'I003', ITEM_FIELD_BUFF_ID, 'BEah')
-        call SaveReal(itemDb, 'I003', ITEM_FIELD_AOE_RADIUS, 1000.0)
         call SaveInteger(itemDb, 'I003', ITEM_FIELD_GOLD_COST, 1500)
         call SaveInteger(itemDb, 'I003', ITEM_FIELD_TAGS, ITEM_TAG_DEFENSIVE + ITEM_TAG_SPELL_BLOCK + ITEM_TAG_UNIQUE_HERO)
 
@@ -1245,7 +1236,7 @@ library IADataItems initializer OnInit
         //   - NO TARGET_ENEMY: convención = el defecto es enemigo.
         //     Solo TARGET_ALLY es excepción explícita.
         //   - NO ITEM_TAG_NUKE: CAST_DAMAGE ya es la señal para lethal check.
-        //     FSM: if enemyHP <= GetCastDamage(itemId) → usar.
+        //     FSM: if enemyHP <= GetCastDamage(itemId) ? usar.
         //   - YAGNI en retraso gráfico (0.25s): WC3 lo maneja internamente.
         //   - Sin receta: la fusión (I006 + I006 = Lvl2) se registra en el Lvl2.
         call SaveReal(itemDb, 'I006', ITEM_FIELD_CAST_DAMAGE, 300.0)
@@ -1275,7 +1266,7 @@ library IADataItems initializer OnInit
         //   - GOLD_COST = costo EXTRA de la receta (0 = gratis al juntar).
         //   - RECIPE_1..N = IDs de ingredientes, SIN significado posicional.
         //     El orden de columnas para el bug de fusión lo maneja
-        //     IA_State_Shopping en runtime (primer comprado → col 1).
+        //     IA_State_Shopping en runtime (primer comprado ? col 1).
         //   - RECIPE_RESULT tag = "no se compra en tienda, se fabrica".
         // ==========================================================
 
@@ -1303,7 +1294,7 @@ library IADataItems initializer OnInit
         // Fusión: belv + gcel + ciri (gratis). +20 INT, +25% AS.
         // DECISIONES:
         //   - Única forma con RECIPE: es el resultado directo de la fusión.
-        //   - NEXT_STATE → I019 (AGI). Bucle: I017 → I019 → I018 → I017.
+        //   - NEXT_STATE ? I019 (AGI). Bucle: I017 ? I019 ? I018 ? I017.
         //   - NO son botas: coexisten con Botas TP (I00W) sin conflicto.
         //   - UNIQUE_HERO: solo 1 set de Power Treads por héroe.
         //   - ACTIVE + CAST_RANGE 0: self-cast (clic para cambiar forma).
@@ -1331,7 +1322,7 @@ library IADataItems initializer OnInit
         call SaveInteger(itemDb, 'I019', ITEM_FIELD_TAGS, ITEM_TAG_OFFENSIVE + ITEM_TAG_ACTIVE + ITEM_TAG_UNIQUE_HERO + ITEM_TAG_RECIPE_RESULT)
 
         // --- Power Treads [Fuerza] 'I018' ---
-        // +20 STR, +25% AS. Forma 3 del bucle. Cierra el ciclo → I017.
+        // +20 STR, +25% AS. Forma 3 del bucle. Cierra el ciclo ? I017.
         call SaveInteger(itemDb, 'I018', ITEM_FIELD_BONUS_STR, 20)
         call SaveReal(itemDb, 'I018', ITEM_FIELD_ATTACK_SPEED, 0.25)
         call SaveReal(itemDb, 'I018', ITEM_FIELD_CAST_RANGE, 0.0)
@@ -1346,11 +1337,10 @@ library IADataItems initializer OnInit
         //     Por eso wneg NUNCA lleva UNIQUE_HERO (necesita comprar 2).
         //   - Mismos stats que wneg: 800 rango, 325 AoE, 7s CD, 1000 DMG summons.
         //   - YAGNI en MAX_CHARGES: WC3 tiene GetItemCharges() nativo.
-        //   - CONSUMABLE: se gasta y desaparece → Shopping sabe que debe reponer.
+        //   - CONSUMABLE: se gasta y desaparece ? Shopping sabe que debe reponer.
         //   - Tags = wneg + RECIPE_RESULT.
         call SaveInteger(itemDb, 'I012', ITEM_FIELD_GOLD_COST, 0)
         call SaveReal(itemDb, 'I012', ITEM_FIELD_CAST_RANGE, 800.0)
-        call SaveReal(itemDb, 'I012', ITEM_FIELD_AOE_RADIUS, 325.0)
         call SaveReal(itemDb, 'I012', ITEM_FIELD_COOLDOWN, 7.0)
         call SaveReal(itemDb, 'I012', ITEM_FIELD_BONUS_DMG_SUMMON, 1000.0)
         call SaveInteger(itemDb, 'I012', ITEM_FIELD_RECIPE_COUNT, 2)
@@ -1361,15 +1351,14 @@ library IADataItems initializer OnInit
         // --- Wand of Negation 9 cargas 'I01S' ---
         // Fusión: I012 (6 cargas) + wneg (3 cargas) = 9 cargas. TOPE de fusión.
         // DECISIONES:
-        //   - Segunda receta mixta: I012 + wneg → I01S.
+        //   - Segunda receta mixta: I012 + wneg ? I01S.
         //     Inversión total: 3 compras de wneg (200×3 = 600 oro).
         //   - Mismos stats que wneg/I012: 800 rango, 325 AoE, 7s CD, 1000 DMG summons.
-        //   - CONSUMABLE: se gasta y desaparece → Shopping sabe que debe reponer.
+        //   - CONSUMABLE: se gasta y desaparece ? Shopping sabe que debe reponer.
         //   - Tags = I012 + RECIPE_RESULT (hereda).
         //   - TOPE: no existe fusión posterior. Máximo 9 cargas por slot.
         call SaveInteger(itemDb, 'I01S', ITEM_FIELD_GOLD_COST, 0)
         call SaveReal(itemDb, 'I01S', ITEM_FIELD_CAST_RANGE, 800.0)
-        call SaveReal(itemDb, 'I01S', ITEM_FIELD_AOE_RADIUS, 325.0)
         call SaveReal(itemDb, 'I01S', ITEM_FIELD_COOLDOWN, 7.0)
         call SaveReal(itemDb, 'I01S', ITEM_FIELD_BONUS_DMG_SUMMON, 1000.0)
         call SaveInteger(itemDb, 'I01S', ITEM_FIELD_RECIPE_COUNT, 2)
@@ -1545,7 +1534,7 @@ library IADataItems initializer OnInit
         //   - A+A=B: por eso I006 NO lleva UNIQUE_HERO.
         //   - A diferencia de I006 (base), este SÍ cuesta maná (300).
         //   - Mayor rango (900 vs 800) y mayor CD (60s vs 30s).
-        //   - Lethal check: if enemyHP <= 650 and mana >= 300 → usar.
+        //   - Lethal check: if enemyHP <= 650 and mana >= 300 ? usar.
         call SaveReal(itemDb, 'I013', ITEM_FIELD_CAST_DAMAGE, 650.0)
         call SaveReal(itemDb, 'I013', ITEM_FIELD_CAST_RANGE, 900.0)
         call SaveReal(itemDb, 'I013', ITEM_FIELD_COOLDOWN, 60.0)
@@ -1563,8 +1552,8 @@ library IADataItems initializer OnInit
         // No ocupan slot de inventario. Registrados para uso futuro.
 
         // --- Tomo de Experiencia 'texp' ---
-        // 200 oro, consumible instantáneo. +100 XP al héroe.
-        call SaveInteger(itemDb, 'texp', ITEM_FIELD_GOLD_COST, 200)
+        // 150 oro, consumible instantáneo. +100 XP al héroe.
+        call SaveInteger(itemDb, 'texp', ITEM_FIELD_GOLD_COST, 150)
         call SaveInteger(itemDb, 'texp', ITEM_FIELD_SHOP_TYPE, 'n000')
         call SaveInteger(itemDb, 'texp', ITEM_FIELD_TAGS, ITEM_TAG_CONSUMABLE)
 

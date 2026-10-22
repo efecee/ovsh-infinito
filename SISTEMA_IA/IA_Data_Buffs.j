@@ -20,7 +20,7 @@
 //                    + SaveReal niveles ABIL_AS_LVL_BASE + 1..10
 // ==========================================================================
 
-library IADataBuffs initializer OnInit
+library IADataBuffs initializer OnInit requires AreaHabilidades
 
     globals
         private hashtable buffDb = null
@@ -37,9 +37,8 @@ library IADataBuffs initializer OnInit
         // Ejemplo: LoadReal(buffDb, 'A01Y', ABIL_AS_LVL_BASE + 3) = AS del nivel 3.
         // Máximo estricto: 10 niveles por habilidad. Gap = 10 entre bloques.
         public constant integer ABIL_AS_LVL_BASE  = 100 // keys 101..110: Attack Speed por nivel
-        public constant integer ABIL_AOE_LVL_BASE = 180 // keys 181..190: Área de efecto por nivel
-        //                                                  (Usado por GetScaledEffectLevel para
-        //                                                   calcular rango de auras con AS)
+        // El ÁREA de efecto por nivel ya NO se guarda aquí: sale de la library
+        // AreaHabilidades (Animacion_AoE.j), única fuente de áreas del mapa.
 
         // ==============================
         // TIPOS DE ENTREGA (Cat. 4 — Efectos Escalados)
@@ -103,9 +102,10 @@ library IADataBuffs initializer OnInit
     endfunction
 
     // Obtener Área de efecto de una habilidad por nivel.
-    // Consumidor: GetScaledEffectLevel (rango de auras con AS).
+    // Consumidores: GetScaledEffectLevel (rango de auras con AS) y el
+    // Interceptor de AoE (IA_Utils). Lee de AreaHabilidades (Animacion_AoE.j).
     public function GetAbilityAoEByLevel takes integer abilId, integer lvl returns real
-        return LoadReal(buffDb, abilId, ABIL_AOE_LVL_BASE + lvl)
+        return AreaHabilidades_Radio(abilId, lvl)
     endfunction
 
     // --- Funciones de registro dinámico (privadas) ---
@@ -140,16 +140,6 @@ library IADataBuffs initializer OnInit
         set sdFieldRegistry[sdCount] = field
         set sdSideRegistry[sdCount] = side
         set sdCount = sdCount + 1
-    endfunction
-
-    // Helper: Guarda un valor fijo en todos los niveles de una habilidad.
-    private function SaveFixedByLevel takes integer abilId, integer fieldBase, real value, integer maxLvl returns nothing
-        local integer i = 1
-        loop
-            exitwhen i > maxLvl
-            call SaveReal(buffDb, abilId, fieldBase + i, value)
-            set i = i + 1
-        endloop
     endfunction
 
     // --- API pública de consulta para loops dinámicos ---
@@ -244,8 +234,8 @@ library IADataBuffs initializer OnInit
         // 'B011' - Aplauso de Mirmidón 'A04L' (Naga Royal 'H00V') — AoE No-Target (-100% AS)
         // Golpe al suelo: reduce AS a enemigos cercanos. 6 niveles, reducción fija.
         // Similar a Trueno pero sin escalado de AS → buff simple basta.
-        // (El AoE sí escala 600→900, pero como el AS no cambia, no necesitamos
-        //  Interceptor ni ABIL_AOE_LVL_BASE: solo chequeamos presencia de buff.)
+        // (El AoE sí escala por nivel, pero como el AS no cambia, no necesitamos
+        //  Interceptor ni su área: solo chequeamos presencia de buff.)
         call SaveReal(buffDb, 'B011', BUFF_FIELD_AS_MOD, -1.50)
         call RegisterASBuff('B011')
 
@@ -289,9 +279,7 @@ library IADataBuffs initializer OnInit
         call SaveReal(buffDb, 'A01Y', ABIL_AS_LVL_BASE + 8, 0.59)
         call SaveReal(buffDb, 'A01Y', ABIL_AS_LVL_BASE + 9, 0.66)
         call SaveReal(buffDb, 'A01Y', ABIL_AS_LVL_BASE + 10, 0.73)
-        // Área de efecto fija: 900 en los 10 niveles
-        // (Necesario para GetScaledEffectLevel: cálculo de rango de aura)
-        call SaveFixedByLevel('A01Y', ABIL_AOE_LVL_BASE, 900.0, 10)
+        // Área del aura (necesaria para GetScaledEffectLevel): en AreaHabilidades.
 
         // --- Aura de Resistencia 'AOae' / Buff 'BOae' (Jefe Tauren 'Otch') ---
         // Aura pasiva aliada. Incrementa AS del dueño y unidades cercanas.
@@ -311,8 +299,7 @@ library IADataBuffs initializer OnInit
         call SaveReal(buffDb, 'AOae', ABIL_AS_LVL_BASE + 8, 0.48)
         call SaveReal(buffDb, 'AOae', ABIL_AS_LVL_BASE + 9, 0.54)
         call SaveReal(buffDb, 'AOae', ABIL_AS_LVL_BASE + 10, 0.60)
-        // Área de efecto fija: 900 en los 10 niveles
-        call SaveFixedByLevel('AOae', ABIL_AOE_LVL_BASE, 900.0, 10)
+        // Área del aura: en AreaHabilidades.
 
         // --- Trueno 'AHtc' / Buff 'BHtc' (Rey de la Montaña 'Hmkg') ---
         // AoE Instantáneo No-Target (10 niveles). Reduce AS a enemigos.
@@ -330,17 +317,8 @@ library IADataBuffs initializer OnInit
         call SaveReal(buffDb, 'AHtc', ABIL_AS_LVL_BASE + 8, -1.30)
         call SaveReal(buffDb, 'AHtc', ABIL_AS_LVL_BASE + 9, -1.40)
         call SaveReal(buffDb, 'AHtc', ABIL_AS_LVL_BASE + 10, -1.50)
-        // SOLUCIÓN: El Interceptor necesita el Área de Efecto para saber a quiénes aplicarle el nivel en la memoria.
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 1, 250.0) 
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 2, 300.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 3, 350.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 4, 400.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 5, 450.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 6, 500.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 7, 550.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 8, 600.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 9, 650.0)
-        call SaveReal(buffDb, 'AHtc', ABIL_AOE_LVL_BASE + 10, 700.0)
+        // El Interceptor necesita el Área de Efecto para saber a quiénes aplicarle
+        // el nivel en la memoria: la lee de AreaHabilidades (Animacion_AoE.j).
 
         // --- Flechas de Hielo 'ANfa' / Buff 'Bcsd' (Sylvanas 'Hvwd', Bruja de Mar Naga 'Nngs') ---
         // Auto-cast con target directo. Reduce AS del enemigo por nivel.
@@ -379,14 +357,15 @@ library IADataBuffs initializer OnInit
         //                    call RegisterASBuff('Bxxx')
         //   Aura propia:     call RegisterASAura('Axxx', 'Bxxx')
         //                    + SaveReal niveles ABIL_AS_LVL_BASE + 1..10
-        //                    + [!] OBLIGATORIO: ABIL_AOE_LVL_BASE para calcular rango.
+        //                    + [!] OBLIGATORIO: su área en AreaHabilidades (Animacion_AoE.j).
         //   Self-buff:       call RegisterASSelf('Axxx', 'Bxxx')
         //                    + SaveReal niveles ABIL_AS_LVL_BASE + 1..10
         //   Escalado (Cat4): call RegisterScaledEffect('Bxxx', 'Axxx', tipo, ABIL_AS_LVL_BASE, bando)
         //                    + SaveReal niveles ABIL_AS_LVL_BASE + 1..10
         //                    + [!] OBLIGATORIO: Si el tipo es DEBUFF_TYPE_AOE (Instantáneo No-Target), 
-        //                      DEBES registrar ABIL_AOE_LVL_BASE. El Interceptor lo necesita para 
-        //                      saber a quiénes aplicar el nivel en la memoria.
+        //                      DEBES registrar su área en AreaHabilidades (Animacion_AoE.j).
+        //                      El Interceptor la necesita para saber a quiénes aplicar el
+        //                      nivel en la memoria.
     endfunction
 
 endlibrary

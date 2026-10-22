@@ -8,19 +8,21 @@
 //     1. Guia de Jugadores
 //     2. Economia
 //     3. Sistema de Kick
-//     4. v1.0 - Novedades Infinito (version base)
-//     5. v1.1
-//     6. v1.2
-//     7. v1.3
-//     8. v1.4
-//     9. v1.5
-//    10. v1.6
-//    11. v1.7
-//    12. v1.8
-//    13. v1.9
-//    14. v2.0
-//    15. v2.1 (actual)
-//    16. Acerca de
+//     4. Modo Rapido (reglas del modo de partida corta)
+//     5. v1.0 - Novedades Infinito (version base)
+//     6. v1.1
+//     7. v1.2
+//     8. v1.3
+//     9. v1.4
+//    10. v1.5
+//    11. v1.6
+//    12. v1.7
+//    13. v1.8
+//    14. v1.9
+//    15. v2.0
+//    16. v2.1
+//    17. v2.2 (actual)
+//    18. Acerca de
 //
 //   DERECHA - "Informacion en Vivo" (required=false):
 //     1. Registro de Bajas  -> vive en Sistema_Anuncios.j (NO se mueve aqui)
@@ -41,6 +43,18 @@
 //   final de la carga (~90%), SIN error de compilacion. Por eso el historial
 //   de versiones se reparte en UNA PESTAÑA POR VERSION: cada version futura es
 //   una pestaña nueva, nunca se acumula todo en un solo string gigante.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// NOTA DE ANCHO (regla del autor; leer SIEMPRE antes de agregar una linea a
+// una pestaña de version):
+//   Cada cambio ocupa UNA sola linea EN PANTALLA, sin importar la seccion.
+//   Que sea una linea en el codigo NO basta: al renderizar, WC3 parte la linea
+//   solo cuando pasa cierto ancho. Tope = la linea mas ancha ya verificada en
+//   juego sin salto: hoy 106 chars visibles ("Barril Expl.", pestaña v2.1).
+//   No llegar al tope: quedarse por debajo con margen (apuntar a ~100 o menos).
+//   Chars visibles = el texto sin |cffRRGGBB, |r ni |n (los dos espacios y el
+//   guion iniciales SI cuentan). Si no entra, acortar la redaccion; nunca
+//   partir un cambio en dos lineas.
 //===========================================================================
 
 globals
@@ -48,6 +62,7 @@ globals
     quest F9_QGuia      = null
     quest F9_QEconomia  = null
     quest F9_QKick      = null
+    quest F9_QModoRapido = null  // Modo Rapido (reglas)
     quest F9_QV10       = null   // v1.0 (Novedades / version base Infinito)
     quest F9_QV11       = null   // v1.1
     quest F9_QV12       = null   // v1.2
@@ -59,7 +74,8 @@ globals
     quest F9_QV18       = null   // v1.8
     quest F9_QV19       = null   // v1.9
     quest F9_QV20       = null   // v2.0
-    quest F9_QV21       = null   // v2.1 (version actual)
+    quest F9_QV21       = null   // v2.1
+    quest F9_QV22       = null   // v2.2 (version actual)
     quest F9_QAcerca    = null
     quest F9_QComandos  = null
 endglobals
@@ -145,6 +161,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n|cffFFCC00Ejemplos:|r"
     set d = d + "|n  |cffFFCC00-fondo 500|r o |cffFFCC00-f 500|r  Pides 500 de oro. A tus aliados les sale el aviso (expira en 20s)."
     set d = d + "|n  |cffFFCC00OK|r o |cffFFCC00-ok|r  Aportas a la colecta activa. Das solo lo que falta; entre varios la completan."
+    set d = d + "|n  |cffFFCC00OK 200|r  Aportas solo 200, aunque hayan pedido mas."
+    set d = d + "|n  |cffFFCC00OK todo|r  Aportas TODO tu oro, aunque hayan pedido menos."
     set d = d + "|n"
     set d = d + "|n|cffFF4444Restricciones:|r"
     set d = d + "|n  - |cffFFCC00OK|r sin guion solo responde durante los 20s de una colecta activa."
@@ -166,11 +184,14 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n  |cffFFCC00-kick blue|r        Expulsa al azul."
     set d = d + "|n  |cffFFCC00-kick ped|r         Expulsa a 'Pedrito' o el primero cuyo nick inicie asi."
     set d = d + "|n  |cffFFCC00-kick 7|r             Expulsa al slot 7 (verde)."
+    set d = d + "|n  |cffFFCC00-kick 11|r           Expulsa al observador 1 (slot 11)."
+    set d = d + "|n  |cffFFCC00-kick 12|r           Expulsa al observador 2 (slot 12)."
     set d = d + "|n"
     set d = d + "|n|cffFFCC00Quien es el Master?|r"
     set d = d + "|nEl primer jugador humano (no bot) de arriba"
     set d = d + "|nhacia abajo. Si sale o esta AFK, el rol rota"
-    set d = d + "|nautomaticamente al siguiente."
+    set d = d + "|nautomaticamente al siguiente. Si solo hay bots,"
+    set d = d + "|nel Master es un observador."
     set d = d + "|n"
     set d = d + "|n|cffFFCC00Sistema de Votacion|r"
     set d = d + "|nCuando alguien abandona o es expulsado:"
@@ -189,10 +210,32 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n|cffFF4444Restricciones:|r"
     set d = d + "|n  - No puedes auto-expulsarte."
     set d = d + "|n  - Un bot post-voto puede ser re-expulsado."
+    set d = d + "|n  - Los observadores se expulsan solo por numero (11 o 12) y sin votacion."
     set F9_QKick = F9_CreateTab("Sistema de Kick", "ReplaceableTextures\\CommandButtons\\BTNBanish.blp", "|cffFFCC00EXPULSA JUGADORES Y DECIDE QUE HACER ANTE UNA DESCONEXION.|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 4: v1.0 - NOVEDADES OvsH INFINITO (VERSION BASE)
+    // PESTAÑA 4: MODO RAPIDO
+    // (Reglas del modo de partida corta, ver Core_Menu_Modo.j. Si cambia
+    //  una regla, cambiar tambien el aviso de inicio de ese archivo.)
+    // ------------------------------------------------------------------
+    set d = "La misma partida, pensada para durar menos."
+    set d = d + "|nLa elige el |cffFFCC00Master|r en la primera pantalla."
+    set d = d + "|nSolo existe en salas |cffFFCC00sin bots|r."
+    set d = d + "|n"
+    set d = d + "|n|cffFFCC00Reglas|r"
+    set d = d + "|n  - Las estructuras tienen la |cffFFCC00mitad de vida|r."
+    set d = d + "|n  - No hay tabernas: nadie puede |cffFFCC00reparar|r."
+    set d = d + "|n  - Ninguna |cffFFCC00armadura|r se fusiona (los daños sí)."
+    set d = d + "|n  - Oro por segundo: |cffFFCC0012, 15 o 18|r (en Normal: 6, 9 o 12)."
+    set d = d + "|n  - Si alguien se desconecta, no hay opción |cff00CCFFBOT|r."
+    set d = d + "|n"
+    set d = d + "|nTodo lo demás es igual: mismos héroes, habilidades"
+    set d = d + "|ne ítems. Se combina con cualquier modo de héroes"
+    set d = d + "|ny de habilidades."
+    set F9_QModoRapido = F9_CreateTab("Modo Rapido", "ReplaceableTextures\\CommandButtons\\BTNBootsOfSpeed.blp", "|cffFFCC00LA MISMA PARTIDA, PENSADA PARA DURAR MENOS.|r", d, true)
+
+    // ------------------------------------------------------------------
+    // PESTAÑA 5: v1.0 - NOVEDADES OvsH INFINITO (VERSION BASE)
     // (Lo que "Infinito" agrega sobre el OvsH clasico. Cada version
     //  posterior tiene su propia pestaña: v1.1, v1.2, ... v1.5.)
     // ------------------------------------------------------------------
@@ -234,7 +277,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV10 = F9_CreateTab("v1.0 - Novedades Infinito", "ReplaceableTextures\\CommandButtons\\BTNEngineeringUpgrade.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 5: v1.1
+    // PESTAÑA 6: v1.1
     // ------------------------------------------------------------------
     set d = "|cffFFCC00v1.1|r"
     set d = d + "|nAjustes de economia y aliados."
@@ -250,7 +293,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV11 = F9_CreateTab("v1.1", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 6: v1.2
+    // PESTAÑA 7: v1.2
     // ------------------------------------------------------------------
     set d = "|cffFFCC00v1.2|r"
     set d = d + "|nDesercion, votacion y torres."
@@ -269,7 +312,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV12 = F9_CreateTab("v1.2", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 7: v1.3
+    // PESTAÑA 8: v1.3
     // ------------------------------------------------------------------
     set d = "|cffFFCC00v1.3|r"
     set d = d + "|nItems, estructuras y rebalance."
@@ -287,7 +330,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV13 = F9_CreateTab("v1.3", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 8: v1.4
+    // PESTAÑA 9: v1.4
     // ------------------------------------------------------------------
     set d = "|cffFFCC00v1.4|r"
     set d = d + "|nInterfaz, items y rebalance de habilidades."
@@ -312,7 +355,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV14 = F9_CreateTab("v1.4", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 9: v1.5
+    // PESTAÑA 10: v1.5
     // ------------------------------------------------------------------
     set d = "|cffFFCC00v1.5|r"
     set d = d + "|nRebalance de heroes, items y sistemas."
@@ -349,11 +392,11 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV15 = F9_CreateTab("v1.5", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 10: v1.6
+    // PESTAÑA 11: v1.6
     // NOTA DE ESTILO (v1.6 en adelante): una sola pestaña por version.
     // Para que entre en el limite de ~4096 chars (ver NOTA DE LIMITE arriba):
     //   - Una linea VISIBLE por cambio: WC3 salta automaticamente por ancho.
-    //     Maximo practico: la linea "Cadena de Relampagos" de v1.9.
+    //     Tope de ancho: ver NOTA DE ANCHO en la cabecera.
     //   - Notacion "x/y" = nivel 1 / nivel maximo (se aclara en la cabecera).
     //   - Solo el nombre en color; los numeros van planos (el color cuesta
     //     ~12 chars por par |cff..|r y es lo que mas infla el texto).
@@ -392,7 +435,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV16 = F9_CreateTab("v1.6", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 11: v1.7
+    // PESTAÑA 12: v1.7
     // Mismo estilo que v1.6: una linea por cambio, secciones, "antes X, ahora
     // Y", solo el nombre en color. Ver NOTA DE LIMITE (~4096 chars) arriba.
     // ------------------------------------------------------------------
@@ -408,7 +451,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV17 = F9_CreateTab("v1.7", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 12: v1.8
+    // PESTAÑA 13: v1.8
     // ------------------------------------------------------------------
     set d = "|cffFFCC00HABILIDADES|r"
     set d = d + "|n  - |cffFFCC00Ventisca|r |cff888888(Archimago)|r: daño 35/197 (35/175), tope 140/788 (120/565)."
@@ -435,7 +478,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV18 = F9_CreateTab("v1.8", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 13: v1.9  (version actual)
+    // PESTAÑA 14: v1.9  (version actual)
     // ------------------------------------------------------------------
     set d = "|cffFFCC00HABILIDADES|r"
     set d = d + "|n  - |cffFFCC00Elemental|r |cff888888(Archi)|r: atajos Q/W/E/R, Nube desbloqueada. Ola Aplastante: 0s, mana 200 (100)."
@@ -472,7 +515,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV19 = F9_CreateTab("v1.9", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 14: v2.0
+    // PESTAÑA 15: v2.0
     // ------------------------------------------------------------------
     set d = "|cffFFCC00HEROES Y HABILIDADES|r"
     set d = d + "|n  - |cffFFCC00Alquimista pandaren|r: velocidad de movimiento base 290 (antes 270)."
@@ -503,7 +546,7 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set F9_QV20 = F9_CreateTab("v2.0", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER HABILIDADES: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 15: v2.1 (version actual)
+    // PESTAÑA 16: v2.1
     // ------------------------------------------------------------------
     set d = "|cffFFCC00HEROES Y HABILIDADES|r"
     set d = d + "|n  - |cffFFCC00Transmutar|r |cff888888(Alquimista)|r: mana 300/600 (antes 100/300), enfria 280/420s (antes 60/160s)."
@@ -527,13 +570,50 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n|cffFFCC00ARREGLOS|r"
     set d = d + "|n  - |cffFFCC00Transmutar|r |cff888888(Alquimista)|r: ya no se puede usar sobre el EDITOR (ave neutral)."
     set d = d + "|n  - |cffFFCC00Transmutar|r |cff888888(Alquimista)|r: el oro del hechizo y la recompensa del creep ya no se superponen."
-    set F9_QV21 = F9_CreateTab("v2.1 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER HABILIDADES: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
+    set F9_QV21 = F9_CreateTab("v2.1", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00COMO LEER HABILIDADES: nivel 1 / nivel maximo (valores anteriores).|r", d, true)
 
     // ------------------------------------------------------------------
-    // PESTAÑA 16: ACERCA DE
+    // PESTAÑA 17: v2.2 (version actual)
+    // ------------------------------------------------------------------
+    set d = "|cffFFCC00HEROES Y HABILIDADES|r"
+    set d = d + "|n  - |cffFFCC00Defensa Magna|r |cff888888(Magnadefender)|r: bloquea 50/200 de daño (50/300), prob. 25/75% (30/50%)."
+    set d = d + "|n  - |cffFFCC00Sifón de Maná|r |cff888888(Mago)|r: robo/s 20/375 en curva (antes 20/407 en recta), enfria 8s (7s)."
+    set d = d + "|n  - |cffFFCC00Sifón de Maná|r |cff888888(Mago)|r: ya no roba maná al Tanque Salvaje ni al Guardia del Apocalipsis."
+    set d = d + "|n  - |cffFFCC00Banish|r |cff888888(Mago)|r: enfriamiento 7s/5s (antes 6s/4.5s)."
+    set d = d + "|n  - |cffFFCC00Gran Avatar|r |cff888888(Rey de la Montaña)|r: +30 daño fijo (antes 10/60); ya no da armadura (antes 2/12)."
+    set d = d + "|n  - |cffFFCC00Dormir|r |cff888888(Señor del Terror)|r: duración 4/13s (antes 5/14s), enfriamiento fijo 9s (antes 10s)."
+    set d = d + "|n  - |cffFFCC00Transferencia|r |cff888888(Sylvanas Orco)|r: roba 10/100 vida/s (antes 10/82); corregido error que no robaba."
+    set d = d + "|n  - |cffFFCC00Rayo Cónico|r |cff888888(Bruja de Mar Naga)|r: mejorada para ser exactamente igual a la del Vidente."
+    set d = d + "|n  - |cffFFCC00Sed de Magia|r |cff888888(Dath'Remar)|r: ahora solo da vida y cuesta mana (antes no); área 300 (antes 350)."
+    set d = d + "|n  - |cffFFCC00Tanque Salvaje|r |cff888888(Vidente)|r: vida 6300 (antes 5200), enfria 240/60s (antes 300/30s)."
+    set d = d + "|n  - |cffFFCC00Guardia del Apocalipsis|r |cff888888(PitLord)|r: inmune a magia (vara no lo daña), ya no se lanza a aliados."
+    set d = d + "|n  - |cffFFCC00Dominio Divino|r |cff888888(Lord Garithos)|r: aura, ralentiza a enemigos 4/40% (8/50%), área 520/700 (550/700)."
+    set d = d + "|n  - |cffFFCC00Caparazón con Púas|r |cff888888(Señor de la Cripta)|r: sigue reflejando; el héroe ya no sufre +55% daño melee."
+    set d = d + "|n  - |cffFFCC00Martillo de Tormenta|r |cff888888(Rey Montaña/Bandido)|r: stun héroes nv10 7.04s (7.7s), enfria 9/25s (8/22s)."
+    set d = d + "|n  - |cffFFCC00Pulverizador Curativo|r |cff888888(Alquimista)|r: alcance 700 (800/900), cura 40/320 (30/300), 5 olas (6)."
+    set d = d + "|n|cffFFCC00SISTEMAS|r"
+    set d = d + "|n  - |cffFFCC00Oro por segundo|r: el master elige 6/9/12, y 12/15/18 en Modo Rápido (antes 3/6/12/18)."
+    set d = d + "|n  - |cffFFCC00NUEVO: Modo Rápido|r (sin bots): estructuras a mitad de vida, sin reparar ni fusionar armaduras."
+    set d = d + "|n  - |cffFFCC00NUEVO: Observadores|r: ven todo el mapa, siguen a un héroe con -foco y ven su oro y habilidades."
+    set d = d + "|n  - |cffFFCC00Pantalla final|r: tu resumen con puesto, racha, soporte y duelos (antes últimas 10 bajas)."
+    set d = d + "|n  - |cffFFCC00Asistencias|r: ahora son 4 tipos (Daño, Control, Bloqueo y Apoyo); el soporte recibe más mérito."
+    set d = d + "|n  - |cffFFCC00Colecta (-fondo)|r: nuevo |cffFFCC00ok 500|r (aportas solo 500) y |cffFFCC00ok todo|r (todo tu oro); antes solo ok."
+    set d = d + "|n  - |cffFFCC00Torres de Fortaleza|r |cff888888(Orcos)|r: igual que en los humanos, ya no se reparan (antes sí)."
+    set d = d + "|n  - |cffFFCC00Libro Muertos|r: 500 (450), esqueletos inmunes a magia; |cffFFCC00Libro Asedio|r: 250 (450), alcance 1500 (1150)."
+    set d = d + "|n  - |cffFFCC00Mano del Rey|r: costo 3000 (antes 4000)."
+    set d = d + "|n  - |cffFFCC00Tienda de tomos|r: nuevos libros de Fuerza x7, Agilidad x7 e Inteligencia x7 para compra masiva."
+    set d = d + "|n|cffFFCC00ARREGLOS|r"
+    set d = d + "|n  - |cffFFCC00Sistema de bots|r: corregido bug en late game que los dejaba quietos en el pasaje central."
+    set d = d + "|n  - |cffFFCC00Quebrantavidas|r |cff888888(Troll Berserker)|r: pierden vida ambos o ninguno; si Banish lo anula, no hay slow."
+    set d = d + "|n  - |cffFFCC00Carne de Carnicero|r |cff888888(Abominación)|r: ahora sí aturde al Hojalatero en Robo Goblin (antes no)."
+    set d = d + "|n  - |cffFFCC00Vara|r: ya no disipa invulnerables como Espíritus de Venganza ni Animar a los Muertos (antes sí)."
+    set F9_QV22 = F9_CreateTab("v2.2 (actual)", "ReplaceableTextures\\CommandButtons\\BTNStatUp.blp", "|cffFFCC00nivel 1 / nivel maximo (valores anteriores).|r", d, true)
+
+    // ------------------------------------------------------------------
+    // PESTAÑA 18: ACERCA DE
     // ------------------------------------------------------------------
     set d = "|cffFFCC00Orcos vs Humanos Infinito|r"
-    set d = d + "|n|cffFFCC00Version 2.1|r"
+    set d = d + "|n|cffFFCC00Version 2.2|r"
     set d = d + "|n"
     set d = d + "|nMapa competitivo tipo MOBA"
     set d = d + "|npara Warcraft III 1.27b."
@@ -559,8 +639,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     set d = d + "|n  Enviar madera a un aliado."
     set d = d + "|n|cffFFCC00-fondo|r |cff888888[cantidad] (o -f)|r"
     set d = d + "|n  Pedir oro al equipo (colecta de 20s)."
-    set d = d + "|n|cffFFCC00OK|r |cff888888(o -ok)|r"
-    set d = d + "|n  Aportar a la colecta activa durante sus 20s (lo que falte)."
+    set d = d + "|n|cffFFCC00OK|r |cff888888[cantidad o todo] (o -ok)|r"
+    set d = d + "|n  Aportar a la colecta activa (20s). Sin cantidad: lo que falte."
     set d = d + "|n|cffFFCC00-hud|r"
     set d = d + "|n  Activar/Desactivar datos en vivo y panel central del comando -fondo."
     set d = d + "|n|cffFFCC00-as|r"
@@ -587,8 +667,8 @@ function InitTrig_Sistema_F9 takes nothing returns nothing
     // Pasar "" si ese subtitulo no aporta informacion. No hace falta guardar el
     // handle si la pestaña es estatica.
     //
-    // Para una NUEVA VERSION (ej. v2.1): copiar el bloque de una pestaña de
-    // version, cambiar el titulo/contenido y agregar su global (F9_QV21).
+    // Para una NUEVA VERSION (ej. v2.3): copiar el bloque de una pestaña de
+    // version, cambiar el titulo/contenido y agregar su global (F9_QV23).
     // NUNCA meter todas las versiones en una sola pestaña: se pasa del limite
     // de ~4096 chars y crashea la carga (ver NOTA DE LIMITE arriba).
     // ------------------------------------------------------------------

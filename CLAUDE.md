@@ -94,14 +94,17 @@ Dos capas:
 | Capa | Ubicación | Rol |
 |---|---|---|
 | **Legacy Base** | `Documentacion/init.j` | Código original desprotegido. Solo lectura conceptual; triggers y globals generadas por el editor. |
-| **Código Nuevo (activo)** | `SISTEMA_IA/`, `SISTEMA_CORE/`, `EXTRAS/`, `CUSTOM_SKILLS/` | Todo el código nuevo, modular. Aquí se lee y escribe. |
+| **Código Nuevo (activo)** | `SISTEMA_IA/`, `SISTEMA_CORE/`, `EXTRAS/`, `CUSTOM_SKILLS/`, `COMBINACION_OBJETOS/` | Todo el código nuevo, modular. Aquí se lee y escribe. |
 
-**Código Activo Total = `init.j` + las 4 carpetas nuevas.**
+**Código Activo Total = `init.j` + las 5 carpetas nuevas.**
+
+> ⚠️ **GUI → código:** si un detonador del mapa sigue en GUI, la fuente de verdad es el mapa (no una copia vieja del proyecto). Antes de convertir, leerlo del `war3map.j` del mapa y escribir los `TRIGSTR_n` como texto literal (ver memoria `gui-a-codigo-desde-el-mapa`). En los textos que se ven en el juego, solo caracteres Latin-1: el editor guarda las flechas y similares como `?`.
 
 > ⚠️ `Documentacion/_REFERENCIA_GLOBAL.j` está **desactualizado**: úsalo solo para consultar **nombres de globales del editor** (`udg_*`, `gg_*`). Nunca tomes su lógica como referencia.
 
 El resto del código nuevo, **fuera del foco actual** (consultar solo si el problema lo toca):
-- **`SISTEMA_CORE/`**: arranque de partida — detección de host, índice de héroes, menús de modo (All Pick / Random), economía de oro, asignación aleatoria de héroes, AFK.
+- **`SISTEMA_CORE/`**: arranque de partida — detección de host, índice de héroes, modo de partida (Normal / Rápido) y sus reglas, menús de modo (All Pick / Random), economía de oro, asignación aleatoria de héroes, AFK.
+- **`COMBINACION_OBJETOS/`**: fusiones de ítems (de 2 piezas en `Fusiones Clasicas.j`, varitas, recetas de 3 piezas, Power Treads, Botas de TP). Un archivo por detonador del editor, con el mismo nombre.
 - **`EXTRAS/`**: sistemas complementarios — kills, votación, méritos, anti-backdoor, economía, modo aleatorio de habilidades, zoom, easter eggs.
 - **`CUSTOM_SKILLS/`**: habilidades en vJASS puro (Gancho de Carnicero, Torbellino, Quebrantavidas, Fisura, Barril). Cada archivo trae cabecera con los campos del Object Editor a ajustar.
 
@@ -114,8 +117,9 @@ La IA corre un **loop de 0.10s** (`TimerStart(IA_Timer_Loop, 0.10, true, functio
 ### Jerarquía de Libraries (orden por `requires`)
 
 ```
-IADataItems   ←─ base (sin dependencias)
-IADataBuffs   ←─ base
+AreaHabilidades ←─ base (sin dependencias). Vive en EXTRAS/Animacion_AoE.j: ÚNICA fuente del área de efecto de las habilidades
+IADataItems   ←─ requires AreaHabilidades
+IADataBuffs   ←─ requires AreaHabilidades
 IABlackboard  ←─ base (pizarra tipada del laning: struct LaningBrain)
 IAData        ←─ requires IADataItems
 IAUtils       ←─ requires IAData, IADataItems, IADataBuffs
@@ -154,7 +158,7 @@ Sistemas del laning (2026-06-10, ver detalle en la guía de debug):
 - **Amenaza ANTICIPADA**: héroes con `danger >= 1.4` a ≤800 suman daño potencial al de-aggro **solo en inferioridad local** (tomar distancia del peligroso estando solo).
 - **Aliado condenado ("el siguiente soy yo")**: si un aliado cercano cae en <6s al ritmo real bajo focus (≥2 enemigos) y sin él quedamos en inferioridad, retirada táctica aunque la vida esté llena (`dangerRetreat`, canal del de-aggro).
 - **Tolerancia efectiva**: el umbral del frame se recorta 25% por enemigo extra enfocándome (la tolerancia persistida NO se modula). Decay agotado → suelta `lastTarget`.
-- **WAR PARTY (late game)**: desde que cualquier F1 abre (`IABrainMacro_IsWarPartyActive`), no avanzar solo: grupo = min(equipo, 3); sin grupo, `IssueAdvance` manda al punto de reunión (centroide del equipo fuera de base / defensa propia); con grupo, adopta el carril de la mayoría. **HOLD FIRE**: en standoff el primer golpe a héroes lo decide un humano vivo (sin humanos: solo con superioridad); los remates no se retienen.
+- **WAR PARTY (late game)**: desde que cualquier F1 abre (`IABrainMacro_IsWarPartyActive`), no avanzar solo: grupo = min(equipo, 3); sin grupo, `IssueAdvance` manda al punto de reunión (centroide del equipo fuera de base **de un solo lado, Top o Bot** — nunca promediar ambos carriles: cae en la montaña central y el bot queda atascado en el callejón de la tienda secreta / defensa propia); con grupo, adopta el carril de la mayoría. **HOLD FIRE**: en standoff el primer golpe a héroes lo decide un humano vivo (sin humanos: solo con superioridad); los remates no se retienen.
 
 > Regla base de depuración: la **DECISIÓN** (a quién atacar/perseguir, farmear o huir) se edita en `Think()`; la **EJECUCIÓN** (timing, temblor, kite) en la FSM de `ExecuteLaning()`. **Nunca mezclar.** Detalle completo en [`GUIA_DEBUG_BOTS.md`](SISTEMA_IA/GUIA_DEBUG_BOTS.md).
 
@@ -180,7 +184,8 @@ Sistemas del laning (2026-06-10, ver detalle en la guía de debug):
 3. **`onInit` / inicialización:** asegúrate de que todo bloque de init esté implementado y llamado. Diálogos/interfaces mal inicializados fallan **silenciosamente**.
 4. **Memory leaks:** nullea siempre los locales `unit`, `group`, `trigger` al final de cada función.
 5. **Hashtable de Shopping (keys 100-119):** no `FlushChildHashtable` en `IA_Target_Memory` sobre un héroe; usa `RemoveSaved*`.
-6. **Invariantes de bots:** `Think()` jamás emite órdenes; solo `ExecuteLaning()` emite (excepción acotada: la guardia `IABreakout_Try` también emite, como interrupción transitoria de máxima prioridad). El estado táctico vive en `LaningBrain`, no en `Bot` ni en hashtables nuevas. El **breakout nunca escribe** `lastTarget`/`isRetreating` (canal propio `breakoutTarget`). (Ver `GUIA_DEBUG_BOTS.md`.)
+6. **Áreas de habilidades:** el área de efecto de una habilidad del Editor de Objetos se escribe SOLO en la library `AreaHabilidades` (inicio de `EXTRAS/Animacion_AoE.j`) y se lee con `AreaHabilidades_Radio/Largo/RadioItem`. Nunca copiar un radio de habilidad a otro archivo. Estar en esa lista no dibuja anillo (eso lo decide `IsRegistered`). Ese trigger no debe desactivarse.
+7. **Invariantes de bots:** `Think()` jamás emite órdenes; solo `ExecuteLaning()` emite (excepción acotada: la guardia `IABreakout_Try` también emite, como interrupción transitoria de máxima prioridad). El estado táctico vive en `LaningBrain`, no en `Bot` ni en hashtables nuevas. El **breakout nunca escribe** `lastTarget`/`isRetreating` (canal propio `breakoutTarget`). (Ver `GUIA_DEBUG_BOTS.md`.)
 
 ---
 
@@ -204,12 +209,22 @@ Sistemas del laning (2026-06-10, ver detalle en la guía de debug):
 
 ## Flujo de Inicio del Mapa
 
+0. **Pantallas del Master:** Modo de partida (`Core_Menu_Modo.j`, solo en salas sin bots) → Oro (`Core_Menu_Oro.j`: 6/9/12 en Normal, 12/15/18 en Rápido) → Héroes → Habilidades (solo sin bots). El Master AFK se vigila en la primera pantalla visible y, si rota, todo vuelve a empezar desde la de modo. Las reglas del **Modo Rápido** (estructuras al 50%, sin tabernas = sin reparar, ninguna armadura se fusiona, sin opción BOT en el voto) se aplican al terminar las pantallas (`CoreMenuModo_Aplicar`, desde `EjecutarPostSeleccion`). Cualquier sistema consulta el modo con `ModoPartida_EsRapido()`.
 1. `IA_Permisos`: al inicio, permite a humanos seleccionar héroes de los bots por 60s.
-2. Al vencer el timer → `IA_Arrancar` quita el control compartido y llama `IACore_InitializeBots()`.
+2. Al vencer el timer → `IA_Arrancar` anuncia que los bots atacan y llama `IACore_InitializeBots()`. El control compartido NO se quita: los aliados humanos conservan el control de los bots (`IACore_ShareBotToHumanAllies`, permanente por diseño).
 3. `InitializeBots()` itera los 16 slots, registra héroes humanos en `AllHeroes[]` y bots (Computer) en `BotsActive[]`, y llama `StartEngine()`.
 4. `StartEngine()` inicia el timer de 0.10s con `MainLoop`.
 
-> **Modo aleatorio de habilidades:** desactivado cuando hay bots presentes (los bots no aprenden/usan habilidades aleatorias). No mezclar ese modo con IA.
+> **Modo aleatorio de habilidades y Modo Rápido:** desactivados cuando hay bots presentes (los bots no aprenden/usan habilidades aleatorias ni compran sin fusiones). No mezclar esos modos con IA: en los dos, el voto de desconexión no ofrece BOT.
+
+## Menú F9 (`EXTRAS/Sistema_F9.j`) — reglas fijas
+
+Aplican **siempre** que se toque el F9, sin que el autor tenga que recordarlas:
+
+1. **Una línea en pantalla por cambio** en las pestañas de versión (sea de héroes, ítems, sistemas o arreglos). Que sea una línea en el código no basta: WC3 parte la línea solo al renderizar si pasa cierto ancho. **Tope = 106 caracteres visibles** (la línea más ancha ya verificada en juego sin salto: "Barril Expl.", pestaña v2.1). **No llegar al tope**: apuntar a ~100 o menos. Si no entra, acortar la redacción; nunca partir un cambio en dos líneas.
+   - Visibles = el texto sin `|cffRRGGBB`, `|r` ni `|n` (los dos espacios y el guion iniciales sí cuentan). No hay `python` en este equipo: medir con PowerShell (`-replace '\|c[0-9A-Fa-f]{8}','' -replace '\|r','' -replace '\|n',''` y `.Length`) **antes** de entregar.
+2. **Cada pestaña < ~4096 caracteres** contando códigos de color y `|n`: pasarse crashea el mapa al ~90% de la carga sin error de compilación. Una pestaña por versión.
+3. Estilo: solo el nombre en color, números planos, "antes X". Detalle en la `NOTA DE ANCHO` / `NOTA DE LIMITE` de la cabecera de `Sistema_F9.j`.
 
 ## Convención de Rawcodes
 

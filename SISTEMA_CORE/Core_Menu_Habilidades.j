@@ -1,30 +1,34 @@
 // ==========================================================================
-// Core_Menu_Habilidades.j — Pantalla 3: Modo de Habilidades
+// Core_Menu_Habilidades.j — Pantalla 4: Modo de Habilidades
 // ==========================================================================
 //
 // PROPÓSITO:
-//   Tercera pantalla de configuración. El Master elige entre:
+//   Cuarta (última) pantalla de configuración. El Master elige entre:
 //     - Clásico: Habilidades originales (sin cambios).
 //     - Aleatorio: Habilidades redistribuidas por columna (Q?Q, W?W, etc.).
 //
 // FLUJO:
-//   Pantalla 1 (Oro) ? Pantalla 2 (Héroes) ? [ESTA] Pantalla 3 (Habilidades)
-//   ? Cámara + Descongelar + Random + Shuffle + IA
+//   Pantalla 1 (Modo, Core_Menu_Modo.j) -> Pantalla 2 (Oro) -> Pantalla 3
+//   (Héroes) -> [ESTA] Pantalla 4 (Habilidades)
+//   -> Reglas del Modo Rápido + Cámara + Descongelar + Random + Shuffle + IA
+//   (Con bots no aparecen ni la pantalla de modo ni esta.)
 //
 //   EXCEPCIÓN BOTS: Si la partida arrancó con bots (udg_Core_HayBots == true),
-//   la Pantalla 3 NUNCA se muestra: se fuerza Clásico automáticamente. Esto
+//   la Pantalla 4 NUNCA se muestra: se fuerza Clásico automáticamente. Esto
 //   garantiza que ningún bot juegue el Modo Aleatorio de Habilidades.
 //
 // DEPENDENCIAS:
 //   - ModoAleatorio (library en Modo_Aleatorio_DB.j)
 //   - SistemaVoto (library en Sistema_Voto.j): aviso de fin de menús para
 //     abrir la votación diferida (abandonos durante carga/menús)
+//   - CoreMenuModo (library en Core_Menu_Modo.j): aplica las reglas del Modo
+//     Rápido al terminar los menús
 //   - Variables udg_* del editor GUI (Config_Modo_*, Core_*, unit*, etc.)
 //   - Triggers GUI: gg_trg_Core_Logica_Random, gg_trg_IA_Permisos
 //
 // ==========================================================================
 
-library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto
+library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto, CoreMenuModo
 
     globals
         private dialog   menuDlg      = null
@@ -114,10 +118,16 @@ library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto
     // LÓGICA POST-SELECCIÓN
     // Asume que 'modoHabil' ya fue fijado (1=Clásico, 2=Aleatorio).
     // Reutilizada por:
-    //   - OnClick()        : tras el clic del Master en la Pantalla 3.
-    //   - MostrarPantalla(): ruta de bots, sin mostrar Pantalla 3 (Clásico forzado).
+    //   - OnClick()        : tras el clic del Master en la Pantalla 4.
+    //   - MostrarPantalla(): ruta de bots, sin mostrar Pantalla 4 (Clásico forzado).
     // ==============================
     private function EjecutarPostSeleccion takes nothing returns nothing
+        // --- 0. REGLAS DEL MODO RÁPIDO ---
+        // Se aplican AQUÍ, con todas las pantallas ya respondidas y el juego
+        // todavía congelado: si el Master rotó a mitad de los menús, nada quedó
+        // aplicado a medias. En modo Normal no hace nada. Ver Core_Menu_Modo.j.
+        call CoreMenuModo_Aplicar()
+
         // --- 1. MENSAJE ULTRA SHORT ---
         call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 10.0, "|cFFFFCC00Modo:|r Ultra Short activado por defecto (+100% XP).")
 
@@ -179,8 +189,8 @@ library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto
         call PauseGame(false)
 
         // --- 3b. SONIDO: CONFIGURACIÓN DEL MASTER TERMINADA ---
-        // Punto único de convergencia: con bots se llega aquí tras la Pantalla 2
-        // (héroes) y sin bots tras la Pantalla 3 (habilidades). En ambos casos el
+        // Punto único de convergencia: con bots se llega aquí tras la pantalla de
+        // héroes y sin bots tras la de habilidades. En ambos casos el
         // juego se acaba de descongelar = el Master terminó de configurar la sala.
         call SetSoundVolume(sndConfigDone, 127)
         call StartSound(sndConfigDone)
@@ -215,7 +225,7 @@ library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto
     endfunction
 
     // ==============================
-    // HANDLER: Click en Pantalla 3
+    // HANDLER: Click en Pantalla 4
     // ==============================
     private function OnClick takes nothing returns nothing
         // Fase de menús completada: desactivar vigilancia de Leave
@@ -234,12 +244,12 @@ library MenuHabilidades initializer OnInit requires ModoAleatorio, SistemaVoto
     endfunction
 
     // ==============================
-    // API PÚBLICA: Muestra la Pantalla 3 al Master
+    // API PÚBLICA: Muestra la Pantalla 4 al Master
     // Llamada desde Core_Menu_Heroes_Click.j
     // ==============================
     public function MostrarPantalla takes nothing returns nothing
         // --- EXCEPCIÓN BOTS: Modo Aleatorio PROHIBIDO con bots ---
-        // Si la partida arrancó con bots, saltamos la Pantalla 3 y forzamos
+        // Si la partida arrancó con bots, saltamos la Pantalla 4 y forzamos
         // Clásico. Así ningún bot puede jugar el Modo Aleatorio de Habilidades.
         if (udg_Core_HayBots) then
             call CoreMasterAFK_Finish()

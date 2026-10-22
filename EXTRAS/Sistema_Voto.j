@@ -27,10 +27,14 @@
 //
 // DEPENDENCIAS:
 //   - IACore (library): IACore_RegisterHero, IACore_StartEngine, etc.
-//   - udg_MB_Hash (hashtable de tabla.j): flags de procesamiento
+//   - udg_MB_Hash (hashtable de tabla.j): flags de procesamiento, y la foto
+//     de estadísticas del que abandona (keys 710-720, ver
+//     Voto_CongelarClasificacion) que lee Sistema_Victoria.j
+//   - Sistema_AntiBackdoor.j: AB_SiegeF0-F3 (copiados a la foto)
+//   - ModoPartida (library en Core_Menu_Modo.j): en Modo Rápido no hay BOT
 //===========================================================================
 
-library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOVDetection
+library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOVDetection, ModoPartida
 
     // ==========================================================
     // CONSTANTES
@@ -677,6 +681,12 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOV
             set j = j + 1
         endloop
 
+        // Este reparto lo hace el SISTEMA, no es un regalo del desertor: a
+        // propósito NO escribe las keys 701/702 de udg_MB_Hash (Donador /
+        // Clasificación en Sistema_Victoria.j). Así el que se va no gana puntos
+        // ni Donador por su oro repartido, y los herederos no quedan penalizados
+        // por recibirlo. El re-sembrado de Eco_GoldBaseline al final de
+        // Voto_EjecutarContinuar impide que el detector F11 lo cuente.
         if (allyCount > 0 and goldD > 0) then
             set share = goldD / allyCount
         endif
@@ -1088,10 +1098,12 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOV
         if (Voto_PrimaryHasHero) then
             // CASO 2: Tiene héroe. El equipo afectado decide cómo continuar.
             set Voto_BtnAffectedDrop = DialogAddButton(Voto_DialogAffected, "DROP (Soltar items y repartir su oro)", 0)
-            // BOT solo está permitido FUERA del Modo Aleatorio de Habilidades.
-            // Con ModoAl_Activo, un bot no puede reemplazar al desertor: se omite
-            // la opción para garantizar que ningún bot juegue ese modo.
-            if (not ModoAl_Activo) then
+            // BOT solo está permitido FUERA del Modo Aleatorio de Habilidades y
+            // del Modo Rápido (Core_Menu_Modo.j). En esos modos un bot no puede
+            // reemplazar al desertor: se omite la opción para garantizar que
+            // ningún bot los juegue. Sin el botón nadie puede votar BOT, y el
+            // resultado por defecto ya es DROP.
+            if (not ModoAl_Activo and not ModoPartida_EsRapido()) then
                 set Voto_BtnAffectedBot = DialogAddButton(Voto_DialogAffected, "BOT (Un BOT lo reemplaza)", 0)
             endif
             set Voto_BtnAffectedRmk = DialogAddButton(Voto_DialogAffected, "RMK (Expulsar a todos)", 0)
@@ -1133,6 +1145,35 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOV
         call TimerStart(Voto_TimerBanner, BANNER_UPDATE_INTERVAL, true, function Voto_BannerLoop)
     endfunction
 
+
+    // ==========================================================
+    // CONGELAR CLASIFICACIÓN: foto de las estadísticas al salir
+    // ==========================================================
+    // El que abandona (o es expulsado) deja de sumar para la Clasificación y
+    // las Distinciones de Sistema_Victoria.j, pero conserva lo logrado: si se
+    // desconectó siendo el mejor, puede seguir en el podio. Sin la foto, con
+    // voto BOT la IA seguía sumando en su misma fila (y el podio mostraba su
+    // nombre con puntos del bot). La tabla (multiboard) sigue mostrando el
+    // slot en vivo; la foto solo la lee Sistema_Victoria.j (SV_StatInt/Real).
+    // udg_MB_Hash, parent = playerId: 710 = foto tomada (boolean);
+    // 711 kills, 712 muertes, 713 asistencias, 714 oro enviado, 715 oro
+    // recibido (integer); 716 daño a héroes, 717-720 asedio F0-F3 (real).
+    private function Voto_CongelarClasificacion takes integer id returns nothing
+        if (LoadBoolean(udg_MB_Hash, id, 710)) then
+            return
+        endif
+        call SaveBoolean(udg_MB_Hash, id, 710, true)
+        call SaveInteger(udg_MB_Hash, id, 711, LoadInteger(udg_MB_Hash, id, 1))
+        call SaveInteger(udg_MB_Hash, id, 712, LoadInteger(udg_MB_Hash, id, 2))
+        call SaveInteger(udg_MB_Hash, id, 713, LoadInteger(udg_MB_Hash, id, 4))
+        call SaveInteger(udg_MB_Hash, id, 714, LoadInteger(udg_MB_Hash, id, 701))
+        call SaveInteger(udg_MB_Hash, id, 715, LoadInteger(udg_MB_Hash, id, 702))
+        call SaveReal(udg_MB_Hash, id, 716, LoadReal(udg_MB_Hash, id, 700))
+        call SaveReal(udg_MB_Hash, id, 717, AB_SiegeF0[id])
+        call SaveReal(udg_MB_Hash, id, 718, AB_SiegeF1[id])
+        call SaveReal(udg_MB_Hash, id, 719, AB_SiegeF2[id])
+        call SaveReal(udg_MB_Hash, id, 720, AB_SiegeF3[id])
+    endfunction
 
     // ==========================================================
     // CAPTURAR HÉROE: Busca y retiene el héroe del jugador
@@ -1223,6 +1264,10 @@ library SistemaVoto initializer OnInit requires IACore, ModoAleatorio, ReplayPOV
         if (Voto_Desertores[id]) then
             return
         endif
+
+        // Congelar su Clasificación en este instante, antes de que la votación
+        // (BOT/DROP) o una asistencia póstuma toquen sus estadísticas.
+        call Voto_CongelarClasificacion(id)
 
         // Capturar héroe ANTES de que otro sistema lo borre
         call Voto_CapturarHeroe(p)

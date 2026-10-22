@@ -1,6 +1,17 @@
-
-// Trigger: Core_Indice_Heroes
-
+//===========================================================================
+// CORE: INDICE DE HEROES (sorteo del modo Random)
+//===========================================================================
+// Llena las listas de heroes de cada equipo (Array_Heroes_Humanos/Orcos y
+// Config_Total_Heroes) que usa Core_Logica_Random.j para sortear.
+// SE EJECUTA AL INICIAR EL MAPA: no tiene eventos. En el editor tiene marcada
+// la casilla "Ejecutar al iniciar el mapa"; al convertirlo a texto esa casilla
+// se conserva. NO desmarcarla.
+//
+// TEXTO PERSONALIZADO (antes era GUI). En el editor: seleccionar el detonador
+// "Core_Indice_Heroes", Editar > Convertir en texto personalizado, y reemplazar todo
+// por este archivo. El nombre del detonador NO debe cambiar.
+// Conversion 1:1 del GUI que tenia el mapa el 2026-10-20: mismo comportamiento.
+//===========================================================================
 function Trig_Core_Indice_Heroes_Actions takes nothing returns nothing
     set udg_Config_Total_Heroes[1]=19
     set udg_Config_Total_Heroes[2]=18

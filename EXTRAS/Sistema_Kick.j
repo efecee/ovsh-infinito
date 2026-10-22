@@ -15,7 +15,7 @@ function Kick_GetPlayer takes string s returns player
         return null
     endif
 
-    // 1. NÚMEROS DE JUGADOR (1 al 10) -> Player(0..9)
+    // 1. NÚMEROS DE JUGADOR (1 al 10) -> Player(0..9); 11 y 12 -> observadores
     //    Misma convención que la guía F9 y el comando -oro (slot = id + 1).
     if (input == "1") then
         return Player(0)
@@ -37,6 +37,12 @@ function Kick_GetPlayer takes string s returns player
         return Player(8)
     elseif (input == "10") then
         return Player(9)
+    // Observadores (Core_Observadores.j): solo por numero, nunca por color
+    // ni por nombre, para no expulsar a uno por accidente.
+    elseif (input == "11") then
+        return Player(10)
+    elseif (input == "12") then
+        return Player(11)
     endif
 
     // 2. COLORES
@@ -138,8 +144,14 @@ function Trig_Sistema_Kick_Actions takes nothing returns nothing
     // 3. EJECUCIÓN
     if (target != null) then
         set id = GetPlayerId(target)
-        
-        if (target == kicker) then
+
+        // Observador: sin voto, sin tabla y sin sonido (aviso propio de 2 s).
+        if (id >= 10) then
+            if (not Observadores_Expulsar(target)) then
+                call DisplayTimedTextToPlayer(kicker, 0, 0, 5.0, "|cffFF0000[ERROR]|r No hay un observador en el puesto " + param + ".")
+            endif
+
+        elseif (target == kicker) then
             call DisplayTimedTextToPlayer(kicker, 0, 0, 5.0, "|cffFF0000[ERROR]|r No te puedes auto-expulsar bro.")
         
             // CHECK: ¿Ya procesado? (Usamos hash 101 para "Ya Limpiado")

@@ -135,7 +135,7 @@
 //   una unidad neutral y el evento se dispara del lado del vendedor.
 //
 // === ANUNCIO DE COMPRA ===
-//   Cuando alguien COMPRA el item se avisa a TODOS los jugadores durante
+//   Cuando alguien COMPRA el item se avisa a TODOS (jugadores y observadores) durante
 //   MDR_ANNOUNCE_TIME segundos, una sola vez por partida y SIN decir quien lo
 //   tiene: la noticia es que el item entro en juego, no una delacion.
 //   Cuelga del evento de venta, que es el unico que significa "compra" (el PICKUP
@@ -168,6 +168,7 @@ library ItemManoDelRey initializer OnInit
         private constant integer MDR_BEAT       = 4          // ticks por latido (4 * 0.50 = 2.00s)
         private constant integer MDR_MAX_COPIES = 8          // tope de ilusiones marcadas a la vez
         private constant integer MDR_LAST_PLAYER = 9         // ultimo slot real (5 humanos + 5 orcos)
+        private constant integer MDR_LAST_VIEWER = 11        // ultimo slot que ve el anuncio (10-11 = observadores)
         private constant integer MDR_MISSING     = 2         // latidos sin rastro para darlo por destruido
         private constant real    MDR_ANNOUNCE_TIME = 5.0     // duracion del anuncio de compra
         // Mensaje literal: si le cambias el nombre al item en el Object Editor, hay
@@ -357,7 +358,7 @@ library ItemManoDelRey initializer OnInit
         // El envio explicito mantiene una sola copia por cliente en partida normal
         // y deja disponible la copia correspondiente a cada POV en la repeticion.
         loop
-            exitwhen i > MDR_LAST_PLAYER
+            exitwhen i > MDR_LAST_VIEWER
             call DisplayTimedTextToPlayer(Player(i), 0, 0, MDR_ANNOUNCE_TIME, MDR_ANNOUNCE_MSG)
             set i = i + 1
         endloop

@@ -1,92 +1,73 @@
-
-// Trigger: Core_DetectarHost
+//===========================================================================
+// CORE: DETECTAR HOST (arranque de la partida)
+//===========================================================================
+// A los 0.05 s recorre los 10 slots de jugadores y configura la partida:
+//   - Equipos: slots 1-5 -> udg_Grupo_Humanos, slots 6-10 -> udg_Grupo_Orcos.
+//   - Bots: si algun slot lo controla la computadora, udg_Core_HayBots = true
+//     (con bots no hay Modo Rapido ni Modo Aleatorio de Habilidades).
+//   - Master: el primer jugador humano, de arriba hacia abajo, recibe los
+//     menus de configuracion (udg_Core_JugadorMaestro). Si ningun humano
+//     juega en los slots 1-10 (sala de solo bots), el Master es el primer
+//     observador (Core_Observadores.j).
+//   - Experiencia: handicap de XP 200% para todos (Modo Ultra Short).
 //
-// Función: Escanea los 10 slots de jugadores al iniciar el mapa para configurar la partida automáticamente.
-// - Asignación de Equipos:
-//  (Slots 1-5 -> Grupo Humanos)
-//  y (Slots 6-10 -> Grupo Orcos)
-// - Detección de IA: Verifica si hay Bots presentes para activar la lógica artificial (Core_HayBots).
-// - Designación del Host (Master): Identifica al primer jugador humano real y le entrega el control de los menús de configuración
-// - Configuración Global: Aplica el handicap de experiencia (Modo Ultra Short) a todos los jugadores activos.
-
-function Trig_Core_DetectarHost_Func004Func002Func001C takes nothing returns boolean
-    if ( not ( GetForLoopIndexA() <= 5 ) ) then
-        return false
-    endif
-    return true
-endfunction
-
-function Trig_Core_DetectarHost_Func004Func002Func002C takes nothing returns boolean
-    if ( not ( GetPlayerController(udg_TempPlayer) == MAP_CONTROL_COMPUTER ) ) then
-        return false
-    endif
-    return true
-endfunction
-
-function Trig_Core_DetectarHost_Func004Func002Func003C takes nothing returns boolean
-    if ( not ( GetPlayerController(udg_TempPlayer) == MAP_CONTROL_USER ) ) then
-        return false
-    endif
-    if ( not ( udg_Temp_MasterEncontrado == false ) ) then
-        return false
-    endif
-    return true
-endfunction
-
-function Trig_Core_DetectarHost_Func004Func002C takes nothing returns boolean
-    if ( not ( GetPlayerSlotState(udg_TempPlayer) == PLAYER_SLOT_STATE_PLAYING ) ) then
-        return false
-    endif
-    return true
-endfunction
-
-function Trig_Core_DetectarHost_Func005C takes nothing returns boolean
-    if ( not ( udg_Core_HayBots == true ) ) then
-        return false
-    endif
-    return true
-endfunction
+// TEXTO PERSONALIZADO (antes era GUI). En el editor: seleccionar el detonador
+// "Core_DetectarHost", Editar > Convertir en texto personalizado, y reemplazar
+// todo por este archivo. El nombre del detonador NO debe cambiar.
+// Conversion del GUI que tenia el mapa el 2026-10-20, escrita con un bucle
+// directo (Player(0..9)) en vez del bucle del GUI (ConvertedPlayer(1..10)):
+// mismo comportamiento y mismos textos y duraciones. UNICO CAMBIO: sin bots
+// dice "No hay bots." (antes "No hay bots, iniciando partida clásica...", que
+// confundia ahora que el Master puede elegir el Modo Rapido).
+//===========================================================================
 
 function Trig_Core_DetectarHost_Actions takes nothing returns nothing
-    set udg_Core_HayBots=false
-    set udg_Temp_MasterEncontrado=false
-    set udg_Core_JugadorMaestro=Player(0)
-    set bj_forLoopAIndex=1
-    set bj_forLoopAIndexEnd=10
+    local integer i = 0
+    set udg_Core_HayBots = false
+    set udg_Temp_MasterEncontrado = false
+    set udg_Core_JugadorMaestro = Player(0)
     loop
-        exitwhen bj_forLoopAIndex > bj_forLoopAIndexEnd
-        set udg_TempPlayer=ConvertedPlayer(GetForLoopIndexA())
-        if ( Trig_Core_DetectarHost_Func004Func002C() ) then
-            if ( Trig_Core_DetectarHost_Func004Func002Func001C() ) then
-                call ForceAddPlayerSimple(udg_TempPlayer, udg_Grupo_Humanos)
+        exitwhen i > 9
+        set udg_TempPlayer = Player(i)
+        if (GetPlayerSlotState(udg_TempPlayer) == PLAYER_SLOT_STATE_PLAYING) then
+            if (i <= 4) then
+                call ForceAddPlayer(udg_Grupo_Humanos, udg_TempPlayer)
             else
-                call ForceAddPlayerSimple(udg_TempPlayer, udg_Grupo_Orcos)
+                call ForceAddPlayer(udg_Grupo_Orcos, udg_TempPlayer)
             endif
-            if ( Trig_Core_DetectarHost_Func004Func002Func002C() ) then
-                set udg_Core_HayBots=true
-            else
+            if (GetPlayerController(udg_TempPlayer) == MAP_CONTROL_COMPUTER) then
+                set udg_Core_HayBots = true
             endif
-            if ( Trig_Core_DetectarHost_Func004Func002Func003C() ) then
-                set udg_Core_JugadorMaestro=udg_TempPlayer
-                set udg_Temp_MasterEncontrado=true
-                call DisplayTimedTextToForce(GetPlayersAll(), 5.00, ( ( "|cffFFCC00" + GetPlayerName(udg_Core_JugadorMaestro) ) + "|r es el MASTER de la partida." ))
-            else
+            if (GetPlayerController(udg_TempPlayer) == MAP_CONTROL_USER and not udg_Temp_MasterEncontrado) then
+                set udg_Core_JugadorMaestro = udg_TempPlayer
+                set udg_Temp_MasterEncontrado = true
+                call DisplayTimedTextToForce(GetPlayersAll(), 10.00, "|cffFFCC00" + GetPlayerName(udg_Core_JugadorMaestro) + "|r es el MASTER de la partida.")
             endif
             call SetPlayerHandicapXP(udg_TempPlayer, 2.00)
-        else
         endif
-        set bj_forLoopAIndex=bj_forLoopAIndex + 1
+        set i = i + 1
     endloop
-    if ( Trig_Core_DetectarHost_Func005C() ) then
-        call DisplayTimedTextToForce(GetPlayersAll(), 5.00, "TRIGSTR_3804")
+    // Sala de solo bots: configura un observador.
+    set i = 0
+    loop
+        exitwhen i > 11 or udg_Temp_MasterEncontrado
+        if (Observadores_PuedeSerMaster(Player(i))) then
+            set udg_Core_JugadorMaestro = Player(i)
+            set udg_Temp_MasterEncontrado = true
+            call DisplayTimedTextToForce(GetPlayersAll(), 10.00, "|cffFFCC00" + GetPlayerName(udg_Core_JugadorMaestro) + "|r (observador) es el MASTER de la partida.")
+        endif
+        set i = i + 1
+    endloop
+    if (udg_Core_HayBots) then
+        call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "Bots detectados.")
     else
-        call DisplayTimedTextToForce(GetPlayersAll(), 5.00, "TRIGSTR_3805")
+        call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "No hay bots.")
     endif
 endfunction
 
 //===========================================================================
 function InitTrig_Core_DetectarHost takes nothing returns nothing
-    set gg_trg_Core_DetectarHost=CreateTrigger()
+    set gg_trg_Core_DetectarHost = CreateTrigger()
     call TriggerRegisterTimerEventSingle(gg_trg_Core_DetectarHost, 0.05)
     call TriggerAddAction(gg_trg_Core_DetectarHost, function Trig_Core_DetectarHost_Actions)
 endfunction

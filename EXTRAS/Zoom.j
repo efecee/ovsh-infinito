@@ -1,5 +1,5 @@
 
-// SISTEMA DE ZOOM PROFESIONAL "ORC VS HUMAN" (10 JUGADORES + AVISO)
+// SISTEMA DE ZOOM PROFESIONAL "ORC VS HUMAN" (10 JUGADORES + OBSERVADORES + AVISO)
 //
 // COMANDOS:
 //   -z1 / -z2 / -z3     Presets   (1650 / 2200 / 2750)
@@ -8,13 +8,22 @@
 //
 // Cualquier valor fuera de rango se clampea al limite mas cercano.
 // Cada cambio muestra feedback privado (barra visual) solo al jugador que escribe.
+//
+// OBSERVADORES (slots 10 y 11, Core_Observadores.j): pueden usar -z (tambien
+// mientras siguen a un heroe con -foco) y empiezan en -z3 (vista global).
 
 globals
     constant real ZOOM_MIN     = 1650.0  // vista cerrada (defecto WC3)
     constant real ZOOM_MAX     = 2750.0  // vista global
     constant real ZOOM_STEP    = 100.0   // paso incremental -z+ / -z-
     constant real ZOOM_DEFAULT = 1650.0  // zoom inicial por jugador
-    real array ZoomActual                // zoom actual por jugador (indice = slot 0..9)
+    constant real ZOOM_OBSERVADOR = 2750.0 // zoom inicial de los observadores (-z3)
+    real array ZoomActual                // zoom actual por jugador (indice = slot 0..11)
+    // Segundo sonido del aviso del F9. Se crea UNA vez en InitTrig_Zoom y se
+    // reutiliza: creado al momento de sonar, la primera reproduccion sale muda
+    // (patron MB_Snd_Leave de tabla.j). El aviso de reglas del Modo Rapido
+    // (Core_Menu_Modo.j) usa estos mismos dos sonidos.
+    sound Zoom_SndAviso = null
 endglobals
 
 // --- HELPER: clampea un valor de zoom al rango seguro ---
@@ -72,7 +81,7 @@ function Trig_Zoom_Message takes nothing returns nothing
     // Usamos códigos de color: |cff(Hex)Texto|r
     call DisplayTimedTextToPlayer(GetLocalPlayer(), 0, 0, 12.00, "|cffFFCC00Notas del parche|r\nConoce todas las novedades de esta versión en |cffFFCC00F9|r.")
     call StartSound(bj_questUpdatedSound)
-    call StartSound(CreateSound("Sound\\Interface\\QuestActivateWhat1.wav", false, false, false, 10, 10, ""))
+    call StartSound(Zoom_SndAviso)
 
     // LIMPIEZA DE MEMORIA:
     // Destruimos este detonador temporal porque ya cumplió su función (sonar a los 75s).
@@ -135,6 +144,26 @@ function Trig_Zoom_Actions takes nothing returns nothing
     set p=null
 endfunction
 
+// --- FUNCIÓN 3: ZOOM INICIAL DE LOS OBSERVADORES (-z3) ---
+// Medio segundo despues de cargar, antes de las pantallas del Master.
+function Zoom_InicioObservadores takes nothing returns nothing
+    local integer i= 0
+    local player p
+    loop
+        exitwhen i > 11
+        set p= Player(i)
+        if ( Observadores_Es(p) ) then
+            set ZoomActual[i]= ZOOM_OBSERVADOR
+            if ( GetLocalPlayer() == p ) then
+                call SetCameraField(CAMERA_FIELD_TARGET_DISTANCE, ZOOM_OBSERVADOR, 0.00)
+            endif
+        endif
+        set i=i + 1
+    endloop
+    call DestroyTrigger(GetTriggeringTrigger())
+    set p=null
+endfunction
+
 //===========================================================================
 // FUNCIÓN DE INICIALIZACIÓN (EL CEREBRO)
 //===========================================================================
@@ -142,13 +171,17 @@ function InitTrig_Zoom takes nothing returns nothing
     local integer i= 0
     // Variable temporal para el detonador del mensaje
     local trigger t_msg= CreateTrigger()
+    local trigger t_obs= CreateTrigger()
 
-    // 0. MEMORIA DE ZOOM: arrancamos a todos en el zoom por defecto.
+    // 0. MEMORIA DE ZOOM: arrancamos a todos en el zoom por defecto (los
+    //    observadores pasan a -z3 en Zoom_InicioObservadores).
     loop
-        exitwhen i > 9
+        exitwhen i > 11
         set ZoomActual[i]= ZOOM_DEFAULT
         set i=i + 1
     endloop
+    call TriggerRegisterTimerEvent(t_obs, 0.50, false)
+    call TriggerAddAction(t_obs, function Zoom_InicioObservadores)
 
     // 1. CONFIGURAR EL SISTEMA DE ZOOM (PRINCIPAL)
     set gg_trg_Zoom=CreateTrigger()
@@ -160,7 +193,7 @@ function InitTrig_Zoom takes nothing returns nothing
     // incremental -z+/-z- saltaria el doble). Por eso registramos solo "-z".
     set i=0
     loop
-        exitwhen i > 9 // Solo slots 0 al 9 (Jugadores reales)
+        exitwhen i > 11 // Slots 0 al 9 (jugadores) y 10-11 (observadores)
         call TriggerRegisterPlayerChatEvent(gg_trg_Zoom, Player(i), "-z", false)
         set i=i + 1
     endloop
@@ -170,7 +203,11 @@ function InitTrig_Zoom takes nothing returns nothing
     // Esto crea un evento que se dispara a los 75.00 segundos exactos de juego.
     call TriggerRegisterTimerEvent(t_msg, 75.00, false)
     call TriggerAddAction(t_msg, function Trig_Zoom_Message)
+    // Sonido persistente del aviso (ver Zoom_SndAviso en los globals).
+    set Zoom_SndAviso = CreateSound("Sound\\Interface\\QuestActivateWhat1.wav", false, false, false, 10, 10, "")
+    call SetSoundVolume(Zoom_SndAviso, 127)
 
-    // Limpieza de la variable local "t_msg" (No destruye el detonador, solo la referencia)
+    // Limpieza de las variables locales (No destruye los detonadores, solo la referencia)
     set t_msg=null
+    set t_obs=null
 endfunction

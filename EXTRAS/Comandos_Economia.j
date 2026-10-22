@@ -7,6 +7,7 @@
 //   -madera <jugador> <cantidad|todo>  Transferencia directa de madera.
 //   -fondo / -f <cantidad>             Abre una petición de oro (bote) para tu equipo.
 //   ok / -ok                           Aporta al bote activo de tu equipo (da solo lo que falta).
+//   ok / -ok <cantidad|todo>           Aporta esa cantidad literal, o todo tu oro.
 //
 // PETICIÓN DE ORO (bote / crowdfunding, SOLO ORO):
 //   - UNA petición activa por equipo a la vez. Dura ECO_REQ_DURATION segundos.
@@ -15,8 +16,11 @@
 //     estilo Datos_EnVivo) con progreso y contador en vivo; se reemplaza al instante
 //     y desaparece de golpe. Además deja un LOG corto en el chat por cada hito.
 //   - "ok" o "-ok" entrega min(faltante, tu oro). Varios aportes llenan el bote hasta la meta.
-//     El "ok" sin guion solo se interpreta durante los 20s de una petición activa;
-//     fuera de esa ventana es chat normal y se ignora por completo.
+//   - "ok N" / "-ok N" entrega N literal y "ok todo" / "-ok todo" todo tu oro, capados
+//     solo a tu oro (igual que "-oro <pedidor> N|todo"): pueden pasar la meta.
+//     El "ok" sin guion (con o sin monto) solo se interpreta durante los 20s de una
+//     petición activa y con un monto válido; fuera de eso es chat normal ("ok vamos")
+//     y se ignora por completo.
 //   - "-oro <pedidor> N" envía N literal (capado solo a tu oro); si llega/supera la meta, cierra.
 //   - Una contribución (por "ok"/"-ok" o por "-oro" al pedidor) es PÚBLICA: mismo mensaje para
 //     todo el equipo (no las 3 vistas personalizadas de una transferencia directa).
@@ -25,12 +29,17 @@
 //   - El cuadro de apertura tiene variante en 1ra persona para el propio pedidor.
 //   - Visible SOLO para aliados (mensajes por slot y panel según el POV observado).
 //
-// CONTABILIDAD (premio "Top Donador" / puntaje en Sistema_Victoria.j):
+// CONTABILIDAD (premio "Donador" / puntaje en Sistema_Victoria.j):
 //   - TODO oro que cambia de bolsillo suma key 701 al DONANTE y key 702 al
 //     RECEPTOR en udg_MB_Hash. Sistema_Victoria.j puntúa el NETO
 //     max(0, 701 - 702): circular oro entre aliados (ping-pong, círculos de
 //     3+) se cancela solo; únicamente puntúa lo regalado por encima de lo
 //     recibido. Devolver oro no pedido restaura el neto del que devuelve.
+//   - Oro enviado SIN HÉROE ELEGIDO (aún con el wisp/alma) NO suma key 701:
+//     no da puntos de Clasificación ni cuenta para Donador. El receptor SÍ
+//     suma key 702 como siempre (ver Eco_CountsAsDonor).
+//   - El reparto del oro de un desertor (DROP/KICK, Sistema_Voto.j) NO pasa
+//     por aquí: no escribe 701/702, así que no premia al que se fue.
 //   - La madera NO suma a key 701/702 (igual que siempre).
 //===========================================================================
 
@@ -52,6 +61,11 @@ globals
     integer array     Eco_Req_LastSec    // último segundo dibujado (evita rebuild por tick)
     boolean array     Eco_Req_Closing    // true durante el grace de cierre del panel
     real array        Eco_Req_CloseGrace // segundos restantes del grace de cierre
+
+    // Monto de un "ok": > 0 = cantidad literal; estos valores marcan los otros casos.
+    constant integer  ECO_OK_MISSING = 0    // "ok" solo: aporta lo que falta (clásico)
+    constant integer  ECO_OK_ALL     = -1   // "ok todo": aporta todo tu oro
+    constant integer  ECO_OK_INVALID = -2   // texto que no es un monto ("ok vamos")
 
     // === Panel vivo (texttag). AJUSTABLES: calibrar offsets en el World Editor ===
     constant real     ECO_REQ_TICK       = 0.03    // ~33 FPS: sigue la cámara fluido
@@ -75,7 +89,7 @@ globals
     // TODO otro movimiento de oro que NO sea un regalo F11 debe mantener
     // Eco_GoldBaseline en sync (avanzar la base o re-sembrar). Fuentes enganchadas:
     //   - comandos -oro/-fondo/-f/ok/-ok ..... Eco_MoveGold (este archivo)
-    //   - renta base (a todos, 1s) ........... Core_Mecanica_Oro (GUI custom script)
+    //   - renta base (a todos, 1s) ........... Core_Mecanica_Oro
     //   - reparto del oro del desertor ....... Voto_EjecutarDrop (Sistema_Voto.j)
     //   - COMPRAS en tienda .................. Eco_OnItemBought (este archivo, vía IADataItems)
     //   - VENTA/EMPEÑO (reembolso mitad) ..... Eco_OnItemPawned (este archivo, vía IADataItems)
@@ -95,6 +109,11 @@ globals
     integer array     Eco_PollDelta
     boolean array     Eco_PollUsed
 endglobals
+
+// Library para que las libraries tambien puedan buscar jugadores igual que
+// -oro (el -foco de los observadores, Core_Observadores.j). Las funciones
+// conservan su nombre.
+library EconomiaJugador
 
 // --- FUNCIÓN DE BÚSQUEDA ---
 function Economia_GetPlayer takes string s returns player
@@ -204,6 +223,8 @@ function Eco_CName takes player p returns string
     return Economia_GetColor(p) + GetPlayerName(p) + "|r"
 endfunction
 
+endlibrary
+
 // --- Índice de equipo (0 = Humanos slots 0-4, 1 = Orcos slots 5-9) ---
 function Eco_TeamIndex takes player p returns integer
     if (GetPlayerId(p) <= 4) then
@@ -240,6 +261,18 @@ function Eco_PlayGoldSound takes player toWhom returns nothing
     call StartSound(Eco_Snd_Gold)
 endfunction
 
+// --- ¿El oro que ENVÍA este jugador puntúa como donación (key 701)? Solo si ya
+//     eligió héroe. MB_HeroType (global de tabla.j) guarda el rawcode del primer
+//     héroe real del slot y nunca vuelve a 0: mientras sigue con el wisp/alma
+//     vale 0. En modos Random el héroe nace al terminar los menús, así que esto
+//     solo filtra a quien aún no escogió en modo Pick.
+//     El RECEPTOR suma 702 siempre, tenga o no héroe: si un envío sin héroe
+//     fuera invisible también para el receptor, A (sin héroe) -> B -> A -> B...
+//     inflaría el 701 de B sin límite con el mismo oro. ---
+function Eco_CountsAsDonor takes integer pid returns boolean
+    return MB_HeroType[pid] != 0
+endfunction
+
 // --- Movimiento de ORO de bajo nivel: estado + contabilidad (keys 701/702) + sonido al receptor.
 //     NO emite mensajes (cada caller decide qué mensaje mostrar). ---
 function Eco_MoveGold takes player fromP, player toP, integer amount returns nothing
@@ -248,10 +281,13 @@ function Eco_MoveGold takes player fromP, player toP, integer amount returns not
     endif
     call SetPlayerState(fromP, PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(fromP, PLAYER_STATE_RESOURCE_GOLD) - amount)
     call SetPlayerState(toP, PLAYER_STATE_RESOURCE_GOLD, GetPlayerState(toP, PLAYER_STATE_RESOURCE_GOLD) + amount)
-    // Contabilidad "Top Donador": key 701 = oro enviado (sobre el donante),
+    // Contabilidad "Donador": key 701 = oro enviado (sobre el donante),
     // key 702 = oro recibido (sobre el receptor). Sistema_Victoria.j puntúa
     // el NETO max(0, 701 - 702) para que circular oro no fabrique puntos.
-    call SaveInteger(udg_MB_Hash, GetPlayerId(fromP), 701, LoadInteger(udg_MB_Hash, GetPlayerId(fromP), 701) + amount)
+    // Sin héroe elegido, el envío no suma 701 (ver Eco_CountsAsDonor).
+    if (Eco_CountsAsDonor(GetPlayerId(fromP))) then
+        call SaveInteger(udg_MB_Hash, GetPlayerId(fromP), 701, LoadInteger(udg_MB_Hash, GetPlayerId(fromP), 701) + amount)
+    endif
     call SaveInteger(udg_MB_Hash, GetPlayerId(toP), 702, LoadInteger(udg_MB_Hash, GetPlayerId(toP), 702) + amount)
     // Sincroniza la línea base del poller F11: este movimiento es por COMANDO
     // (ya contabilizado en 701/702), así que el sondeo NO debe volver a contarlo
@@ -456,6 +492,7 @@ function Eco_Req_AnnounceOpen takes integer team, player req, integer amount ret
             else
                 call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   " + Eco_CName(req) + " ha solicitado |cffFFCC00" + I2S(amount) + "|r de oro")
                 call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   Escribe |cffFFCC00ok|r para aportar")
+                call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "   o |cffFFCC00ok 500|r / |cffFFCC00ok todo|r para elegir cuánto")
             endif
             call DisplayTimedTextToPlayer(p, 0, 0, ECO_OPEN_DUR, "|cffFFCC00====================================|r")
         endif
@@ -502,8 +539,11 @@ function Eco_HandlePido takes player sender, string amountStr returns nothing
     call Eco_Req_AnnounceOpen(team, sender, amount)
 endfunction
 
-// --- "ok" / "-ok": aporta al bote activo del equipo del emisor (da solo lo que falta) ---
-function Eco_HandleOk takes player sender returns nothing
+// --- "ok" / "-ok" [cantidad|todo]: aporta al bote activo del equipo del emisor.
+//     amount = ECO_OK_MISSING da solo lo que falta (clásico); ECO_OK_ALL todo tu oro;
+//     > 0 esa cantidad literal, como "-oro <pedidor> N" (puede pasar la meta: el
+//     sobrante también va al pedidor y el cierre lo anuncia como "+N extra"). ---
+function Eco_HandleOk takes player sender, integer amount returns nothing
     local integer team = Eco_TeamIndex(sender)
     local player req
     local integer remaining
@@ -527,7 +567,13 @@ function Eco_HandleOk takes player sender returns nothing
     endif
     set remaining = Eco_Req_Goal[team] - Eco_Req_Filled[team]
     set have = GetPlayerState(sender, PLAYER_STATE_RESOURCE_GOLD)
-    set give = remaining
+    if (amount == ECO_OK_MISSING) then
+        set give = remaining
+    elseif (amount == ECO_OK_ALL) then
+        set give = have
+    else
+        set give = amount
+    endif
     if (have < give) then
         set give = have
     endif
@@ -541,19 +587,81 @@ function Eco_HandleOk takes player sender returns nothing
     set req = null
 endfunction
 
-// --- "ok" sin guion: respuesta contextual y silenciosa fuera de una colecta. ---
-// Este listener recibe el chat general para poder ignorar mayusculas/minusculas,
-// pero exige que el mensaje completo sea "ok" y que la ventana siga activa.
-function Eco_HandleBareOkChat takes nothing returns nothing
+// --- Monto de "ok <monto>": "todo" o un entero positivo escrito solo con dígitos
+//     (tolera espacios sobrantes). Cualquier otro texto ("vamos", "2min", "0")
+//     devuelve ECO_OK_INVALID: no es un monto. ---
+function Eco_ParseOkAmount takes string s returns integer
+    local integer i = 0
+    local integer j = StringLength(s)
+    local integer amount
+    local string c
+    loop
+        exitwhen i >= j or SubString(s, i, i + 1) != " "
+        set i = i + 1
+    endloop
+    loop
+        exitwhen j <= i or SubString(s, j - 1, j) != " "
+        set j = j - 1
+    endloop
+    set s = SubString(s, i, j)
+    if (s == "todo") then
+        return ECO_OK_ALL
+    endif
+    // Hasta 9 dígitos: cabe en un integer sin desbordar.
+    if (s == "" or StringLength(s) > 9) then
+        return ECO_OK_INVALID
+    endif
+    set i = 0
+    loop
+        exitwhen i >= StringLength(s)
+        set c = SubString(s, i, i + 1)
+        if (c != "0" and S2I(c) == 0) then
+            return ECO_OK_INVALID
+        endif
+        set i = i + 1
+    endloop
+    set amount = S2I(s)
+    if (amount <= 0) then
+        return ECO_OK_INVALID
+    endif
+    return amount
+endfunction
+
+// --- Listener de "ok" / "-ok", con o sin monto. Recibe TODO el chat (así ignora
+//     mayúsculas/minúsculas) y decide aquí:
+//       "ok" / "-ok"              aporta lo que falta (clásico)
+//       "ok 500" / "-ok 500"      aporta 500 (capado a tu oro)
+//       "ok todo" / "-ok todo"    aporta todo tu oro
+//     Sin guion es contextual y silencioso: solo cuenta durante una colecta activa y
+//     con un monto válido; si no, es chat normal. Con guion es el comando explícito:
+//     avisa si no hay colecta o si el monto no es válido. ---
+function Eco_HandleOkChat takes nothing returns nothing
     local string chat = StringCase(GetEventPlayerChatString(), false)
     local player sender = GetTriggerPlayer()
-    local integer team
-    if (chat == "ok") then
-        set team = Eco_TeamIndex(sender)
-        if (Eco_Req_Active[team]) then
-            call Eco_HandleOk(sender)
-        endif
+    local boolean dashed = (SubString(chat, 0, 1) == "-")
+    local integer amount
+    if (dashed) then
+        set chat = SubString(chat, 1, StringLength(chat))
     endif
+    if (chat == "ok") then
+        set amount = ECO_OK_MISSING
+    elseif (SubString(chat, 0, 3) == "ok ") then
+        set amount = Eco_ParseOkAmount(SubString(chat, 3, StringLength(chat)))
+    else
+        set sender = null
+        return // no es un "ok"
+    endif
+    if (not dashed) then
+        if (amount == ECO_OK_INVALID or not Eco_Req_Active[Eco_TeamIndex(sender)]) then
+            set sender = null
+            return
+        endif
+    elseif (amount == ECO_OK_INVALID) then
+        call DisplayTimedTextToPlayer(sender, 0, 0, 5.0, "Cantidad inválida. Usa: ok 500 o ok todo")
+        set sender = null
+        return
+    endif
+    call Eco_HandleOk(sender, amount)
     set sender = null
 endfunction
 
@@ -576,12 +684,8 @@ function Trig_Comandos_Economia_Actions takes nothing returns nothing
     local boolean isGold = true
     local string resName = ""
 
-    // 0. COMANDOS DE PETICIÓN (bote de oro)
-    if (chat == "-ok") then
-        call Eco_HandleOk(sender)
-        set sender = null
-        return
-    elseif (SubString(chat, 0, 7) == "-fondo ") then
+    // 0. COMANDOS DE PETICIÓN (bote de oro). "ok"/"-ok" los atiende Eco_HandleOkChat.
+    if (SubString(chat, 0, 7) == "-fondo ") then
         call Eco_HandlePido(sender, SubString(chat, 7, StringLength(chat)))
         set sender = null
         return
@@ -740,7 +844,10 @@ endfunction
 function Eco_F11_Account takes integer fromId, integer toId, integer amount returns nothing
     local integer team = Eco_TeamIndex(Player(fromId))
     // POOL ÚNICO (igual que Eco_MoveGold): enviado en 701, recibido en 702.
-    call SaveInteger(udg_MB_Hash, fromId, 701, LoadInteger(udg_MB_Hash, fromId, 701) + amount)
+    // Misma regla que el comando: sin héroe elegido, el envío no suma 701.
+    if (Eco_CountsAsDonor(fromId)) then
+        call SaveInteger(udg_MB_Hash, fromId, 701, LoadInteger(udg_MB_Hash, fromId, 701) + amount)
+    endif
     call SaveInteger(udg_MB_Hash, toId,   702, LoadInteger(udg_MB_Hash, toId,   702) + amount)
     // IGUAL QUE "-oro <pedidor>": si el receptor es el pedidor de un bote -fondo
     // ACTIVO de su equipo, el regalo F11 APORTA el monto LITERAL al bote (mismo
@@ -865,7 +972,7 @@ endfunction
 function InitTrig_Comandos_Economia takes nothing returns nothing
     local integer i = 0
     local trigger t = CreateTrigger()
-    local trigger bareOk = CreateTrigger()
+    local trigger okChat = CreateTrigger()
 
     // Crear sonidos globales persistentes (patrón tabla.j: nunca se destruyen)
     set Eco_Snd_Gold = CreateSound("Abilities\\Spells\\Items\\ResourceItems\\ReceiveGold.wav", false, false, false, 10, 10, "")
@@ -881,16 +988,16 @@ function InitTrig_Comandos_Economia takes nothing returns nothing
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-madera ", false)
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-fondo ", false) // petición de oro
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-f ", false)     // alias corto de -fondo
-            call TriggerRegisterPlayerChatEvent(t, Player(i), "-ok", true)      // comando historico (coincidencia exacta)
-            // Listener contextual: recibe cualquier chat, pero su accion solo acepta
-            // un "ok" completo mientras Eco_Req_Active siga encendido para el equipo.
-            call TriggerRegisterPlayerChatEvent(bareOk, Player(i), "", false)
+            // Listener de "ok"/"-ok" (con o sin monto): recibe cualquier chat y
+            // Eco_HandleOkChat filtra. "-ok N" no se registra aparte en 't' para que
+            // un mismo mensaje nunca dispare dos eventos (doble transferencia).
+            call TriggerRegisterPlayerChatEvent(okChat, Player(i), "", false)
         endif
         set i = i + 1
     endloop
 
     call TriggerAddAction(t, function Trig_Comandos_Economia_Actions)
-    call TriggerAddAction(bareOk, function Eco_HandleBareOkChat)
+    call TriggerAddAction(okChat, function Eco_HandleOkChat)
 
     // Sembrar la línea base del poller F11 con el oro inicial y arrancar el
     // sondeo periódico. (El primer tick refresca la base de todos modos, así que
@@ -917,5 +1024,5 @@ function InitTrig_Comandos_Economia takes nothing returns nothing
     call TriggerAddAction(t, function Eco_OnItemPawned)
 
     set t = null
-    set bareOk = null
+    set okChat = null
 endfunction

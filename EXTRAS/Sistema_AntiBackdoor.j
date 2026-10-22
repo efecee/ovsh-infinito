@@ -59,7 +59,8 @@ endfunction
 // Acumula el dano EFECTIVO hecho a estructuras clave enemigas.
 // - GetOwningPlayer(source) acredita heroes, invocaciones, wards y dummies
 //   al mismo jugador dueno.
-// - Los slots 10/11 (creeps/estructuras de linea) quedan fuera.
+// - Solo cuentan los jugadores 0-9: los ejercitos (13/14, creeps y estructuras
+//   de linea, Core_Ejercitos.j) y los observadores (10/11) quedan fuera.
 // - Reparar no resta: si esa vida vuelve a perderse, el nuevo dano suma otra vez.
 // - En WC3 1.27b este evento conserva la vida previa al impacto; limitar el dano
 //   a esa vida evita que el overkill del golpe letal infle al Demoledor.
@@ -204,14 +205,15 @@ endfunction
 // Sonido diferenciado por facción (Multiplayer-Safe)
 // losingFac: 0 = Humanos pierden (oyen QuestFailed), Orcos atacan (oyen Rescue)
 //            1 = Orcos pierden   (oyen QuestFailed), Humanos atacan (oyen Rescue)
+// Los observadores (slots 10-11) no son de ningun bando: oyen siempre Rescue.
 function AB_PlayFactionSound takes integer losingFac returns nothing
     local integer pid = GetPlayerId(GetLocalPlayer())
     local boolean isDefender
-    
+
     if (losingFac == 0) then
         set isDefender = (pid <= 4)
     else
-        set isDefender = (pid >= 5)
+        set isDefender = (pid >= 5 and pid <= 9)
     endif
     
     // QuestFailed para el equipo que perdió sus torres

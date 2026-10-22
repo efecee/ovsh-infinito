@@ -26,6 +26,12 @@
 // AMBOS SISTEMAS SON INDEPENDIENTES y pueden sonar al mismo tiempo.
 // Ejemplo: kill #3 en racha + 3ª en ventana → Killing Spree + Triple Kill.
 //
+// SISTEMA C: RÉCORD DE RACHA (solo datos, sin sonido)
+//   Guarda la racha más larga de cada jugador y cómo terminó (quién la cortó,
+//   una torre, los creeps o si seguía viva). Lo muestra el resumen personal
+//   del final de partida (Sistema_Resumen.j). Si un jugador iguala su récord
+//   más tarde, se conserva el primero: solo un récord MAYOR lo reemplaza.
+//
 // REGLAS DE PRIORIDAD DE SONIDO (por kill):
 //   1. First Blood           → solo firstblood.mp3, nada más.
 //   2. Multi-Kill (mk>=2)    → solo el sonido de multi-kill.
@@ -61,6 +67,14 @@ globals
     integer array KS_MultiKill     // Kills rápidas en la ventana actual
     real    array KS_LastKillTime  // Timestamp de la última kill (vía MB_Timer)
     boolean KS_FirstBloodDone = false
+
+    // --- RÉCORD DE RACHA (lo lee Sistema_Resumen.j) ---
+    integer array KS_BestStreak     // Racha más larga de la partida
+    integer array KS_BestStreakEnd  // Cómo terminó: 0-9 = jugador que la cortó, o un KS_END_*
+    constant integer KS_END_ALIVE  = -1  // Seguía viva al terminar la partida
+    constant integer KS_END_TOWER  = 10  // Último golpe de una torre u otra estructura
+    constant integer KS_END_CREEPS = 11  // La mataron creeps
+    constant integer KS_END_OTHER  = 12  // Aliado, suicidio, sin asesino o IA sustituta
 endglobals
 
 // --- HELPER: Reproducir sonido para TODOS los jugadores ---
@@ -117,6 +131,37 @@ function KS_HandleStreak takes integer pid returns boolean
         return true
     endif
     return false
+endfunction
+
+// ===================== FINAL DEL RÉCORD DE RACHA =====================
+// Clasifica qué terminó una racha. El killer llega ya reatribuido: la
+// invocación de un jugador cuenta como su héroe, igual que en la tabla.
+//   - Héroe enemigo de un jugador (0-9) → su pid.
+//   - Torre u otra estructura enemiga   → KS_END_TOWER (aunque lo vinieran
+//     golpeando héroes: la kill no es de nadie en la tabla ni en los duelos).
+//   - Otra unidad enemiga               → KS_END_CREEPS.
+//   - Aliado, suicidio o sin asesino    → KS_END_OTHER.
+// Si el que la cortó ya abandonó (foto 710 de Sistema_Voto.j), quien jugaba
+// era la IA sustituta: no se nombra (KS_END_OTHER), igual que en los duelos.
+function KS_GetStreakEnd takes unit killer, player pVictim returns integer
+    local integer pid
+    if (killer == null) then
+        return KS_END_OTHER
+    endif
+    if (not IsUnitEnemy(killer, pVictim)) then
+        return KS_END_OTHER
+    endif
+    set pid = GetPlayerId(GetOwningPlayer(killer))
+    if (IsUnitType(killer, UNIT_TYPE_HERO) and pid >= 0 and pid <= 9) then
+        if (LoadBoolean(udg_MB_Hash, pid, 710)) then
+            return KS_END_OTHER
+        endif
+        return pid
+    endif
+    if (IsUnitType(killer, UNIT_TYPE_STRUCTURE)) then
+        return KS_END_TOWER
+    endif
+    return KS_END_CREEPS
 endfunction
 
 // ===================== LÓGICA DE MULTI-KILL =====================
@@ -176,11 +221,17 @@ function KS_OnHeroDeath takes nothing returns nothing
     // se exige IsUnitEnemy ADEMÁS de que el killer sea héroe (incluida invocación
     // enemiga, ya reatribuida a su héroe dueño arriba).
     //   - Deny de un aliado, suicidio o invocación aliada → NO suena, NO acredita.
-    //   - Torre/creep (jugador 10/11) ya no entran porque no son héroes.
+    //   - Torre/creep (ejércitos 13/14, Core_Ejercitos.j) ya no entran porque no son héroes.
     // La racha igual se resetea para TODOS más abajo (B), como en Dota.
     if (KS_Streak[pidV] >= 7 and IsUnitType(killer, UNIT_TYPE_HERO) and IsUnitEnemy(killer, pVictim)) then
         call KS_PlaySound(KS_Snd_HolyShit)
         call DisplayTimedTextToPlayer(GetOwningPlayer(killer), 0, 0, 7.0, "|cffFFCC00Racha Godlike cortada!|r")
+    endif
+
+    // --- A2) ¿Esta muerte termina la racha récord de la víctima? ---
+    // Solo si la racha actual ES el récord y todavía figura como viva.
+    if (KS_Streak[pidV] > 0 and KS_Streak[pidV] == KS_BestStreak[pidV] and KS_BestStreakEnd[pidV] == KS_END_ALIVE) then
+        set KS_BestStreakEnd[pidV] = KS_GetStreakEnd(killer, pVictim)
     endif
 
     // --- B) Resetear racha de la víctima ---
@@ -237,6 +288,11 @@ function KS_OnHeroDeath takes nothing returns nothing
     // --- F) Racha ---
     set KS_Streak[pidK] = KS_Streak[pidK] + 1
     set streakSounded = KS_HandleStreak(pidK)
+    // Récord de racha: solo uno MAYOR reemplaza al anterior, y nace "viva".
+    if (KS_Streak[pidK] > KS_BestStreak[pidK]) then
+        set KS_BestStreak[pidK] = KS_Streak[pidK]
+        set KS_BestStreakEnd[pidK] = KS_END_ALIVE
+    endif
 
     // --- G) PRIORIDAD DE SONIDO ---
     // 1. First Blood: ya sonó arriba, no agregar nada más
@@ -297,6 +353,8 @@ function InitTrig_Sistema_Kills takes nothing returns nothing
         set KS_Streak[i]       = 0
         set KS_MultiKill[i]    = 0
         set KS_LastKillTime[i] = 0.0
+        set KS_BestStreak[i]    = 0
+        set KS_BestStreakEnd[i] = KS_END_ALIVE
         set i = i + 1
     endloop
 

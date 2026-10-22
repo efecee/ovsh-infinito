@@ -10,22 +10,50 @@
 //   3. Muestra el resumen dentro del cuadro final de victoria/derrota.
 //   4. Fuerza la tabla (multiboard) visible y expandida al terminar.
 //   5. Ganadores y perdedores reciben el mismo resumen, con cabecera distinta.
-//   6. Muestra a la izquierda las últimas bajas registradas durante la partida.
+//   6. A la izquierda, cada jugador ve SU resumen personal (Sistema_Resumen.j):
+//      puesto, mejor racha y duelos. El centro y la tabla son iguales para todos.
+//   7. Partida ajustada: si el Castillo/Fortaleza del ganador también estaba
+//      vulnerable y quedó bajo el 50% de vida, una línea sin etiqueta lo dice
+//      debajo de la duración (ver SV_BuildCloseFinish). En Modo Rápido el 100%
+//      es la vida con la que empezó (ModoPartida_FactorVidaEstructuras).
+//   8. Debajo de la duración, el modo de partida y la renta ("Modo: Rápido
+//      (18 oro)"), para comparar cuánto dura cada modo.
 //
 // DEPENDENCIAS:
 //   - Sistema_Voto.j (library SistemaVoto): Voto_GameOver, ForceEndVote
-//   - Sistema_AntiBackdoor.j: AB_SiegeF0/F1/F2/F3
-//   - Sistema_Anuncios.j: KF_DisplayFinalLog (invocada mediante ExecuteFunc)
+//   - Sistema_AntiBackdoor.j: AB_SiegeF0/F1/F2/F3, AB_HUM_F0_Open, AB_ORC_F0_Open
+//   - Sistema_Resumen.j: SistemaResumen_ShowFinal (invocada mediante ExecuteFunc);
+//     lee SV_Rank, SV_Score, SV_HasRow y SV_PlayerCount de este archivo
 //   - tabla.j: MB_Timer, MB_GetColor, udg_MB_Hash, udg_MB_Tabla
 //   - init.j: udg_unit19 (Castillo Humano), udg_unit24 (Fortaleza Orca)
+//   - Core_Menu_Click.j: udg_Config_Cantidad_Oro (renta: 6/9/12 Normal, 12/15/18 Rápido)
+//   - Core_Menu_Modo.j (library ModoPartida): modo de partida y vida de inicio
+//     de las estructuras
+//   - Sistema_Voto.j: foto de estadísticas del que abandona (udg_MB_Hash 710-720)
 //
 // FÓRMULA DE PUNTAJE (Top 3):
-//   Score = Kills*5 + Asistencias*3 - Muertes*4 + redondeo(OroDonadoNeto / 1000)
+//   Score = Kills*5 + Asistencias*3 - Muertes*4 + PuntosOro
+//   PuntosOro = redondeo(OroDonadoNeto / OroPorPunto), con
+//   OroPorPunto = 1000 * renta / 12. El modo de referencia es 12 oro/seg (el
+//   más jugado): 1 punto vale los mismos SEGUNDOS de renta en cualquier modo
+//   (6 -> 500 de oro, 9 -> 750, 12 -> 1000, 15 -> 1250). Ver SV_GoldPoints.
 //   OroDonadoNeto = max(0, enviado(key 701) - recibido(key 702)): el oro que
 //   circula entre aliados (ping-pong, círculos) se cancela solo y no infla el
 //   puntaje; solo puntúa lo regalado por encima de lo recibido.
-//   El oro se redondea al entero más cercano: (oro + 500) / 1000.
+//   No suman 701: el oro enviado antes de elegir héroe (Eco_CountsAsDonor en
+//   Comandos_Economia.j) ni el reparto del oro de un desertor (Sistema_Voto.j).
+//   Desempate: menos muertes, luego más daño a héroes (ver SV_IsBetterRank).
+//   Abandono: el puntaje y las distinciones se CONGELAN al salir (sin
+//   penalización). Lo que haga después la IA sustituta no suma al que se fue.
 //   Se muestran los 3 primeros puestos.
+//
+//   DECISIONES DE DISEÑO (2026-10-13, no reintroducir sin discutirlo):
+//   - El asedio NO suma puntos: lo hacen sobre todo los héroes de daño, que ya
+//     cobran por sus kills, y castigaría a los soportes. Lo reconoce Demoledor.
+//   - Ganar o perder NO suma: la Clasificación mide el aporte individual, gane
+//     o pierda su equipo (en 6 de 7 partidas revisadas el 1.º ya era ganador).
+//   - Abandonar NO resta: no se distingue una desconexión de un abandono a
+//     propósito, y congelar ya le cuesta dejar de sumar.
 //
 // PREMIOS INDIVIDUALES (resumen final):
 //   Demoledor   = mayor daño efectivo a estructuras clave enemigas (F0-F3)
@@ -36,17 +64,27 @@
 
 globals
     constant real SV_SIEGE_EPSILON = 0.01
+    // Puntos por oro: en el modo de referencia (12 oro/seg) 1000 de oro = 1 punto.
+    constant integer SV_GOLD_REF_RATE      = 12
+    constant integer SV_GOLD_PER_POINT_REF = 1000
+    // Partida ajustada: vida máxima (fracción) del edificio del ganador para
+    // mencionarla en el resumen. Por encima no fue una carrera.
+    constant real SV_CLOSE_FINISH_PCT = 0.50
     boolean SV_GameEnded  = false      // Guardia contra re-entrada
     boolean SV_HumansLost = false       // true = Castillo destruido, false = Fortaleza
     // Buffers para el cálculo del Top 3 al terminar (índice 0-9). Se usan una sola
     // vez (SV_GameEnded impide re-entrada), pero se reinicializan al calcular.
     integer array SV_Score
+    integer array SV_Deaths     // desempate 1: menos muertes
+    real    array SV_HeroDmg    // desempate 2: más daño a héroes
     boolean array SV_HasRow
     boolean array SV_Used
+    integer array SV_Rank       // Puesto final (1 = primero); 0 = sin fila. Lo lee Sistema_Resumen.j
     // Resultado ya calculado, copiado a globales para construir una sola vez el
     // mismo resumen que verán todos los jugadores dentro de su cuadro final.
     string  SV_WinTeam     = ""
     string  SV_DurStr      = ""
+    string  SV_CloseFinish = ""        // Línea de partida ajustada; "" si no corresponde
     string  SV_ReportText  = ""
     string  SV_VictoryText = ""
     string  SV_DefeatText  = ""
@@ -97,9 +135,145 @@ function SV_NameOf takes integer pid returns string
     return s
 endfunction
 
+// --- ESTADÍSTICAS PARA CLASIFICACIÓN Y DISTINCIONES ---
+// Si el jugador abandonó, SistemaVoto_OnPlayerLeave dejó una foto de sus
+// estadísticas en udg_MB_Hash (710 = foto tomada; 711-720 = valores). Su
+// puntaje queda congelado en ese momento: conserva lo logrado, pero no suma lo
+// que haga después la IA sustituta (voto BOT) ni asistencias póstumas.
+// liveKey = clave viva (1/2/4/700/701/702); frozenKey = su copia en la foto.
+function SV_StatInt takes integer pid, integer liveKey, integer frozenKey returns integer
+    if LoadBoolean(udg_MB_Hash, pid, 710) then
+        return LoadInteger(udg_MB_Hash, pid, frozenKey)
+    endif
+    return LoadInteger(udg_MB_Hash, pid, liveKey)
+endfunction
+
+function SV_StatReal takes integer pid, integer liveKey, integer frozenKey returns real
+    if LoadBoolean(udg_MB_Hash, pid, 710) then
+        return LoadReal(udg_MB_Hash, pid, frozenKey)
+    endif
+    return LoadReal(udg_MB_Hash, pid, liveKey)
+endfunction
+
+// Daño de asedio en una fase (0 = F0 ... 3 = F3), congelado si abandonó.
+function SV_GetSiegePhase takes integer pid, integer phase returns real
+    if LoadBoolean(udg_MB_Hash, pid, 710) then
+        return LoadReal(udg_MB_Hash, pid, 717 + phase)
+    endif
+    if phase == 0 then
+        return AB_SiegeF0[pid]
+    elseif phase == 1 then
+        return AB_SiegeF1[pid]
+    elseif phase == 2 then
+        return AB_SiegeF2[pid]
+    endif
+    return AB_SiegeF3[pid]
+endfunction
+
+// --- PUNTOS POR ORO DONADO (normalizados por el modo de renta) ---
+// El oro que se puede donar crece en proporción exacta a la renta; las kills
+// no. Medido en oro fijo, el mismo soporte valía más en los modos rápidos.
+// Por eso el oro por punto escala con la renta: 1 punto = los mismos segundos
+// de renta en cualquier modo. Redondea al entero más cercano.
+function SV_GoldPoints takes integer goldNet returns integer
+    local integer rate = udg_Config_Cantidad_Oro
+    local integer perPoint
+    if (rate <= 0) then
+        set rate = SV_GOLD_REF_RATE
+    endif
+    set perPoint = (rate * SV_GOLD_PER_POINT_REF) / SV_GOLD_REF_RATE
+    return (goldNet + perPoint / 2) / perPoint
+endfunction
+
+// --- ORDEN DE LA CLASIFICACIÓN ---
+// Más puntos primero. A igualdad de puntos: menos muertes, luego más daño a
+// héroes. Sin esto el empate lo ganaba siempre el slot más bajo (Rojo antes
+// que Azul, y cualquier Humano antes que cualquier Orco).
+function SV_IsBetterRank takes integer candidate, integer current returns boolean
+    if SV_Score[candidate] != SV_Score[current] then
+        return SV_Score[candidate] > SV_Score[current]
+    endif
+    if SV_Deaths[candidate] != SV_Deaths[current] then
+        return SV_Deaths[candidate] < SV_Deaths[current]
+    endif
+    return SV_HeroDmg[candidate] > SV_HeroDmg[current]
+endfunction
+
+// --- PUESTO DE CADA JUGADOR (lo muestra el resumen personal) ---
+// Mismo orden que el podio de SV_BuildReport: SV_IsBetterRank y, en empate
+// total, el slot más bajo primero (es lo que hace su selección por pasadas).
+// Así el puesto personal nunca contradice al podio del centro.
+function SV_ComputeRanks takes nothing returns nothing
+    local integer i = 0
+    local integer j
+    local integer rank
+    loop
+        exitwhen i > 9
+        set SV_Rank[i] = 0
+        if (SV_HasRow[i]) then
+            set rank = 1
+            set j = 0
+            loop
+                exitwhen j > 9
+                if (j != i and SV_HasRow[j]) then
+                    if (SV_IsBetterRank(j, i) or (j < i and not SV_IsBetterRank(i, j))) then
+                        set rank = rank + 1
+                    endif
+                endif
+                set j = j + 1
+            endloop
+            set SV_Rank[i] = rank
+        endif
+        set i = i + 1
+    endloop
+endfunction
+
+// --- PARTIDA AJUSTADA: vida que le quedó al edificio del GANADOR ---
+// Hay partidas que se deciden en una carrera: los de más daño rompen la base
+// rival mientras los de control defienden (y reparan) la propia. Si el
+// Castillo/Fortaleza del ganador también estaba vulnerable (su F1 ya había
+// caído) y le quedaba menos de SV_CLOSE_FINISH_PCT, se muestra cuánto le
+// quedó: ese es el margen de la carrera. Si repararon, el porcentaje ya lo
+// refleja. Sin etiqueta y corta a propósito ("La Fortaleza quedó al 6%",
+// ~25 chars) para no salirse del cuadro. Mínimo 1%: el edificio sigue en pie.
+// MODO RÁPIDO: normalmente su vida MÁXIMA ya está a la mitad y empieza con la
+// barra llena (factor 1.0). Solo si se usó el plan B de Core_Menu_Modo.j
+// empieza con la mitad de la barra, y entonces el 100% es esa vida de inicio
+// (si no, el aviso saldría en casi todas las partidas rápidas).
+function SV_BuildCloseFinish takes nothing returns string
+    local unit building
+    local boolean vulnerable
+    local string name
+    local real life
+    local real maxLife
+    local integer pct
+
+    if (SV_HumansLost) then
+        set building   = udg_unit24 // Ganaron los Orcos: su Fortaleza
+        set vulnerable = AB_ORC_F0_Open
+        set name       = "La Fortaleza"
+    else
+        set building   = udg_unit19 // Ganaron los Humanos: su Castillo
+        set vulnerable = AB_HUM_F0_Open
+        set name       = "El Castillo"
+    endif
+    set life    = GetWidgetLife(building)
+    set maxLife = GetUnitState(building, UNIT_STATE_MAX_LIFE) * ModoPartida_FactorVidaEstructuras()
+    set building = null
+
+    if (not vulnerable or life <= 0.405 or maxLife <= 0.0 or life >= maxLife * SV_CLOSE_FINISH_PCT) then
+        return ""
+    endif
+    set pct = R2I(life * 100.0 / maxLife)
+    if (pct < 1) then
+        set pct = 1
+    endif
+    return "|cffC0C0C0" + name + " quedó al|r |cffFFCC00" + I2S(pct) + "%|r"
+endfunction
+
 // --- HELPERS: PREMIO DEMOLEDOR ---
 function SV_GetSiegeTotal takes integer pid returns real
-    return AB_SiegeF0[pid] + AB_SiegeF1[pid] + AB_SiegeF2[pid] + AB_SiegeF3[pid]
+    return SV_GetSiegePhase(pid, 0) + SV_GetSiegePhase(pid, 1) + SV_GetSiegePhase(pid, 2) + SV_GetSiegePhase(pid, 3)
 endfunction
 
 function SV_IsWinningPid takes integer pid returns boolean
@@ -120,6 +294,9 @@ function SV_IsBetterSiegeCandidate takes integer candidate, integer current retu
     local boolean sameTeam
     local integer candidateKills
     local integer currentKills
+    local integer phase
+    local real candidatePhase
+    local real currentPhase
 
     if candidateTotal > currentTotal + SV_SIEGE_EPSILON then
         return true
@@ -137,32 +314,25 @@ function SV_IsBetterSiegeCandidate takes integer candidate, integer current retu
 
     set sameTeam = (candidate <= 4 and current <= 4) or (candidate >= 5 and current >= 5)
     if sameTeam then
-        if AB_SiegeF0[candidate] > AB_SiegeF0[current] + SV_SIEGE_EPSILON then
-            return true
-        elseif AB_SiegeF0[current] > AB_SiegeF0[candidate] + SV_SIEGE_EPSILON then
-            return false
-        endif
-        if AB_SiegeF1[candidate] > AB_SiegeF1[current] + SV_SIEGE_EPSILON then
-            return true
-        elseif AB_SiegeF1[current] > AB_SiegeF1[candidate] + SV_SIEGE_EPSILON then
-            return false
-        endif
-        if AB_SiegeF2[candidate] > AB_SiegeF2[current] + SV_SIEGE_EPSILON then
-            return true
-        elseif AB_SiegeF2[current] > AB_SiegeF2[candidate] + SV_SIEGE_EPSILON then
-            return false
-        endif
-        if AB_SiegeF3[candidate] > AB_SiegeF3[current] + SV_SIEGE_EPSILON then
-            return true
-        elseif AB_SiegeF3[current] > AB_SiegeF3[candidate] + SV_SIEGE_EPSILON then
-            return false
-        endif
+        // F0 > F1 > F2 > F3: la primera fase que difiere decide.
+        set phase = 0
+        loop
+            exitwhen phase > 3
+            set candidatePhase = SV_GetSiegePhase(candidate, phase)
+            set currentPhase = SV_GetSiegePhase(current, phase)
+            if candidatePhase > currentPhase + SV_SIEGE_EPSILON then
+                return true
+            elseif currentPhase > candidatePhase + SV_SIEGE_EPSILON then
+                return false
+            endif
+            set phase = phase + 1
+        endloop
     endif
 
     // Solo lectura de la estadistica existente: Demoledor no escribe ni limpia
     // ninguna clave de udg_MB_Hash.
-    set candidateKills = LoadInteger(udg_MB_Hash, candidate, 1)
-    set currentKills = LoadInteger(udg_MB_Hash, current, 1)
+    set candidateKills = SV_StatInt(candidate, 1, 711)
+    set currentKills = SV_StatInt(current, 1, 711)
     if candidateKills > currentKills then
         return true
     elseif currentKills > candidateKills then
@@ -244,7 +414,11 @@ function SV_CustomVictoryBJ takes player whichPlayer, string message returns not
 endfunction
 
 // --- Ejecuta victoria/derrota (llamado directamente, sin delay) ---
+// Los ejercitos de creeps (Core_Ejercitos.j) no ganan ni pierden: son
+// neutrales ocultos. Los slots 10 y 11 son de observadores: reciben el mismo
+// resumen, sin victoria ni derrota.
 function SV_ExecuteResult takes nothing returns nothing
+    local integer i = 0
     if (SV_HumansLost) then
         // Humanos pierden, Orcos ganan
         call CustomDefeatBJ(Player(0), SV_DefeatText)
@@ -257,8 +431,6 @@ function SV_ExecuteResult takes nothing returns nothing
         call SV_CustomVictoryBJ(Player(7), SV_VictoryText)
         call SV_CustomVictoryBJ(Player(8), SV_VictoryText)
         call SV_CustomVictoryBJ(Player(9), SV_VictoryText)
-        call CustomDefeatBJ(Player(10), SV_DefeatText)
-        call SV_CustomVictoryBJ(Player(11), SV_VictoryText)
     else
         // Orcos pierden, Humanos ganan
         call SV_CustomVictoryBJ(Player(0), SV_VictoryText)
@@ -266,14 +438,19 @@ function SV_ExecuteResult takes nothing returns nothing
         call SV_CustomVictoryBJ(Player(2), SV_VictoryText)
         call SV_CustomVictoryBJ(Player(3), SV_VictoryText)
         call SV_CustomVictoryBJ(Player(4), SV_VictoryText)
-        call SV_CustomVictoryBJ(Player(10), SV_VictoryText)
         call CustomDefeatBJ(Player(5), SV_DefeatText)
         call CustomDefeatBJ(Player(6), SV_DefeatText)
         call CustomDefeatBJ(Player(7), SV_DefeatText)
         call CustomDefeatBJ(Player(8), SV_DefeatText)
         call CustomDefeatBJ(Player(9), SV_DefeatText)
-        call CustomDefeatBJ(Player(11), SV_DefeatText)
     endif
+    loop
+        exitwhen i > 11
+        if (Observadores_Es(Player(i))) then
+            call SV_CustomVictoryDialog(Player(i), "|cffFFCC00FIN DE LA PARTIDA|r|n" + SV_ReportText)
+        endif
+        set i = i + 1
+    endloop
 endfunction
 
 // --- Construye el resumen de fin de partida (resultado + Top 3 + premios). ---
@@ -282,7 +459,6 @@ endfunction
 function SV_BuildReport takes nothing returns string
     local integer i
     local integer rank
-    local integer bestScore
     local integer bestIdx
     local string report = "|cffC0C0C0Equipo ganador:|r " + SV_WinTeam
     local string awards = ""
@@ -295,6 +471,14 @@ function SV_BuildReport takes nothing returns string
     endloop
 
     set report = report + "|n|cffC0C0C0Duración:|r |cffFFCC00" + SV_DurStr + "|r"
+    if (ModoPartida_EsRapido()) then
+        set report = report + "|n|cffC0C0C0Modo:|r |cffFFCC00Rápido (" + I2S(udg_Config_Cantidad_Oro) + " oro)|r"
+    else
+        set report = report + "|n|cffC0C0C0Modo:|r |cffFFCC00Normal (" + I2S(udg_Config_Cantidad_Oro) + " oro)|r"
+    endif
+    if (SV_CloseFinish != "") then
+        set report = report + "|n" + SV_CloseFinish
+    endif
 
     // --- TOP 3 POR PUNTAJE (selección por pasadas) ---
     if (SV_PlayerCount >= 1) then
@@ -302,20 +486,22 @@ function SV_BuildReport takes nothing returns string
         set rank = 1
         loop
             exitwhen rank > 3
-            set bestScore = -999999
             set bestIdx = -1
             set i = 0
             loop
                 exitwhen i > 9
-                if (SV_HasRow[i] and not SV_Used[i] and SV_Score[i] > bestScore) then
-                    set bestScore = SV_Score[i]
-                    set bestIdx = i
+                if (SV_HasRow[i] and not SV_Used[i]) then
+                    if (bestIdx == -1) then
+                        set bestIdx = i
+                    elseif (SV_IsBetterRank(i, bestIdx)) then
+                        set bestIdx = i
+                    endif
                 endif
                 set i = i + 1
             endloop
             exitwhen bestIdx == -1
             set SV_Used[bestIdx] = true
-            set report = report + "|n|cffFFCC00" + I2S(rank) + ".|r " + SV_GetColor(Player(bestIdx)) + SV_NameOf(bestIdx) + "|r  |cffAAAAAA" + I2S(bestScore) + " pts|r"
+            set report = report + "|n|cffFFCC00" + I2S(rank) + ".|r " + SV_GetColor(Player(bestIdx)) + SV_NameOf(bestIdx) + "|r  |cffFFFFFF" + I2S(SV_Score[bestIdx]) + " pts|r"
             set rank = rank + 1
         endloop
     endif
@@ -427,31 +613,33 @@ function SV_OnStructureDeath takes nothing returns nothing
     endif
 
     // 5. Calcular puntajes y detectar premios individuales.
-    //    Score = Kills*5 + Asist*3 - Muertes*4 + redondeo(OroDonadoNeto / 1000).
-    //    El oro se redondea al entero más cercano con (oro + 500) / 1000.
-    //    Solo jugadores con fila en la tabla (row > 0) participan.
+    //    Score = Kills*5 + Asist*3 - Muertes*4 + SV_GoldPoints(OroDonadoNeto).
+    //    Solo jugadores con fila en la tabla (row > 0) participan; los que
+    //    abandonaron también, con sus estadísticas congeladas (SV_StatInt/Real).
     loop
         exitwhen i > 9
         set SV_Used[i] = false
         set row = LoadInteger(udg_MB_Hash, i, 0)
         if (row > 0) then
-            set kills   = LoadInteger(udg_MB_Hash, i, 1)
-            set deaths  = LoadInteger(udg_MB_Hash, i, 2)
-            set assists = LoadInteger(udg_MB_Hash, i, 4)
+            set kills   = SV_StatInt(i, 1, 711)
+            set deaths  = SV_StatInt(i, 2, 712)
+            set assists = SV_StatInt(i, 4, 713)
             // Oro donado NETO = enviado(701) - recibido(702), con piso 0: el oro
             // que circula entre aliados se cancela solo (anti ping-pong/círculos);
             // únicamente puntúa regalar más de lo que te regalaron.
-            set goldDon = LoadInteger(udg_MB_Hash, i, 701) - LoadInteger(udg_MB_Hash, i, 702)
+            set goldDon = SV_StatInt(i, 701, 714) - SV_StatInt(i, 702, 715)
             if (goldDon < 0) then
                 set goldDon = 0
             endif
-            set score   = (kills * 5) + (assists * 3) - (deaths * 4) + ((goldDon + 500) / 1000)
+            set score   = (kills * 5) + (assists * 3) - (deaths * 4) + SV_GoldPoints(goldDon)
+            set dmgVal  = SV_StatReal(i, 700, 716)
             set SV_Score[i] = score
+            set SV_Deaths[i] = deaths
+            set SV_HeroDmg[i] = dmgVal
             set SV_HasRow[i] = true
             set playerCount = playerCount + 1
 
-            // Premio "El Verdugo": mayor daño total a héroes (key 700).
-            set dmgVal = LoadReal(udg_MB_Hash, i, 700)
+            // Premio "Cazahéroes": mayor daño total a héroes (key 700).
             if (dmgVal > bestDmg) then
                 set bestDmg = dmgVal
                 set dmgId = i
@@ -464,12 +652,12 @@ function SV_OnStructureDeath takes nothing returns nothing
                     set siegeId = i
                 endif
             endif
-            // Premio "Banquero": más oro donado NETO (701 - 702, ya clampeado).
+            // Premio "Donador": más oro donado NETO (701 - 702, ya clampeado).
             if (goldDon > bestGold) then
                 set bestGold = goldDon
                 set goldId = i
             endif
-            // Premio "Mano Derecha": más asistencias.
+            // Premio "Soporte": más asistencias.
             if (assists > bestAssist) then
                 set bestAssist = assists
                 set assistId = i
@@ -496,22 +684,26 @@ function SV_OnStructureDeath takes nothing returns nothing
     set SV_SiegeId     = siegeId
     set SV_GoldId      = goldId
     set SV_AssistId    = assistId
+    set SV_CloseFinish = SV_BuildCloseFinish()
+    call SV_ComputeRanks()
     set SV_ReportText  = SV_BuildReport()
     set SV_VictoryText = "|cff20C000VICTORIA!|r|n" + SV_ReportText
     set SV_DefeatText  = "|cffFF2020DERROTA|r|n" + SV_ReportText
 
-    // 8. Ejecutar el resultado y reutilizar el antiguo espacio lateral para el
-    //    registro de bajas. En single debe imprimirse antes del diálogo porque
+    // 8. Ejecutar el resultado y mostrar a la izquierda el resumen personal
+    //    de cada jugador. En single debe imprimirse antes del diálogo porque
     //    este pausa la partida; en multi, después de limpiar los avisos nativos.
+    //    ExecuteFunc lo corre en otro hilo: si el resumen fallara, el
+    //    resultado de la partida se ejecuta igual.
     if bj_isSinglePlayer then
-        call ExecuteFunc("KF_DisplayFinalLog")
+        call ExecuteFunc("SistemaResumen_ShowFinal")
         call SV_ExecuteResult()
     else
         call SV_ExecuteResult()
         // Quitar únicamente los avisos nativos "X salió victorioso/derrotado".
         // ClearTextMessages no afecta los cuadros Dialog recién mostrados.
         call ClearTextMessages()
-        call ExecuteFunc("KF_DisplayFinalLog")
+        call ExecuteFunc("SistemaResumen_ShowFinal")
         // El motor NO honra PauseGame en multi al venir de RemovePlayer, así que
         // lo forzamos aquí para igualar la congelación del single player (ya se
         // usa en otros sistemas y funciona en multi).

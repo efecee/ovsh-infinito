@@ -164,15 +164,25 @@ Reglas: grupo requerido = **min(héroes del equipo, 3)** (equipo de 3 espera a
 TODOS; de 4-5 basta mayoría de 3, contando al bot). Con grupo formado, commit
 de `WP_COMMIT` (6s). Sin grupo → `move` al **punto de reunión**: centroide de
 los héroes vivos del equipo FUERA de las bases de curación (excluyéndose a sí
-mismo), o si nadie está fuera, la defensa propia más adelantada viva
-(F3/F2 → anillo F1 → F0 → fuente). Con grupo, además adopta el **carril de la
-mayoría** (`GetMajorityLane`) al resolver el objetivo de fases.
+mismo) **de un solo lado del mapa** (Top Y≥0 / Bot Y<0: el lado de la mayoría,
+pegajoso en empate, igual para todo el equipo); si el bot está del otro lado,
+cruza primero por su base propia. Si nadie más está en ese lado, la defensa
+propia más adelantada viva (F3/F2 → anillo F1 → F0 → fuente). Con grupo, además
+adopta el **carril de la mayoría** (`GetMajorityLane`) al resolver el objetivo
+de fases.
+
+> **FIX TRAMPA-CENTRO (2026-10-13):** antes el rally era el centroide de TODO el
+> equipo. Con aliados repartidos entre Top y Bot el promedio caía dentro de la
+> montaña central; el motor deja la orden `move` en el punto alcanzable más
+> cercano = el callejón de la tienda secreta, y el bot quedaba quieto contra la
+> pared (se auto-reforzaba y volvía tras comprar o tras un TP a base).
 
 | Síntoma | Dónde tocar |
 |---|---|
 | "Los bots no avanzan nunca en late game" | ¿Cuántos vivos? Si vivos < `wpGroupNeeded`, esperan revives a propósito (no pushear en desventaja). Si hay grupo y no avanzan: ver `WP Reagrupar n=x/y` — si `n` nunca llega a `y`, bajar `GROUP_RADIUS` no, SUBIRLO (se cuentan a 900) o revisar que el rally converja. |
 | "Avanza solo igual" | ¿`wpActive`? El modo exige F1 abierta Y equipo ≥2 héroes. Dentro de `WP_COMMIT` (6s) tras perder el grupo sigue avanzando a propósito (histéresis). |
 | "Se quedan parados en la fuente en vez de adelante" | El rally cayó al fallback: nadie fuera de base y sin estructuras propias vivas. Revisar `ResolveRally`. |
+| "Late game: se meten al callejón de la tienda central y se quedan quietos" | Rally fuera de zona caminable. `ResolveRally` debe promediar un solo lado (FIX TRAMPA-CENTRO); nunca volver al centroide de todo el equipo. |
 | "Ping-pong avanzar/reagrupar en el borde del radio" | Subir `WP_COMMIT` o `GROUP_RADIUS` (la histéresis actual es solo del lado avance). |
 | "No inicia pelea ni con ventaja" | HOLD FIRE: con humanos vivos en el equipo, SIEMPRE espera a que un humano enganche (pedido del usuario). Sin humanos, exige superioridad local. |
 | "Va al carril equivocado en el push" | `GetMajorityLane` (mayoría por signo de Y de los héroes fuera de base; 0 = empate = carril propio). |

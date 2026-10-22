@@ -632,17 +632,15 @@ library IABrainMacro requires IAUtils
         private integer wp_orcAlive = 0
         private integer wp_humHumansAlive = 0    // jugadores REALES vivos (deciden el primer golpe)
         private integer wp_orcHumansAlive = 0
-        // Cluster = héroes vivos FUERA de las bases de curación (un AFK parado
-        // en la fuente no arrastra el punto de reunión hacia la base):
-        private integer wp_humOutN = 0
-        private real    wp_humOutSumX = 0.0
-        private real    wp_humOutSumY = 0.0
-        private integer wp_orcOutN = 0
-        private real    wp_orcOutSumX = 0.0
-        private real    wp_orcOutSumY = 0.0
-        // Carril mayoritario de los que están fuera (1=Top, 2=Bot, 0=empate):
+        // Carril mayoritario de los héroes vivos FUERA de las bases de curación
+        // (un AFK parado en la fuente no cuenta) (1=Top, 2=Bot, 0=empate):
         private integer wp_humMajLane = 0
         private integer wp_orcMajLane = 0
+        // Lado de REUNIÓN por facción (1=Top, 2=Bot, 0=sin historial): la
+        // mayoría actual, o la última conocida si hay empate. Es el MISMO para
+        // todo el equipo => nadie se reúne en un lado distinto al del resto.
+        private integer wp_humRallySide = 0
+        private integer wp_orcRallySide = 0
 
         // Resultado de ResolveRally (leer con los getters justo después):
         private real wp_rallyX = 0.0
@@ -692,12 +690,6 @@ library IABrainMacro requires IAUtils
         set wp_orcAlive = 0
         set wp_humHumansAlive = 0
         set wp_orcHumansAlive = 0
-        set wp_humOutN = 0
-        set wp_humOutSumX = 0.0
-        set wp_humOutSumY = 0.0
-        set wp_orcOutN = 0
-        set wp_orcOutSumX = 0.0
-        set wp_orcOutSumY = 0.0
 
         loop
             exitwhen i >= IACore_AllHeroCount
@@ -722,9 +714,6 @@ library IABrainMacro requires IAUtils
                             set wp_humHumansAlive = wp_humHumansAlive + 1
                         endif
                         if not InOwnHealingBase(hx, hy, true) then
-                            set wp_humOutN = wp_humOutN + 1
-                            set wp_humOutSumX = wp_humOutSumX + hx
-                            set wp_humOutSumY = wp_humOutSumY + hy
                             if hy >= 0.0 then
                                 set humTop = humTop + 1
                             else
@@ -739,9 +728,6 @@ library IABrainMacro requires IAUtils
                             set wp_orcHumansAlive = wp_orcHumansAlive + 1
                         endif
                         if not InOwnHealingBase(hx, hy, false) then
-                            set wp_orcOutN = wp_orcOutN + 1
-                            set wp_orcOutSumX = wp_orcOutSumX + hx
-                            set wp_orcOutSumY = wp_orcOutSumY + hy
                             if hy >= 0.0 then
                                 set orcTop = orcTop + 1
                             else
@@ -767,6 +753,13 @@ library IABrainMacro requires IAUtils
             set wp_orcMajLane = 2
         else
             set wp_orcMajLane = 0
+        endif
+        // Lado de reunión pegajoso: en empate se conserva el anterior.
+        if wp_humMajLane != 0 then
+            set wp_humRallySide = wp_humMajLane
+        endif
+        if wp_orcMajLane != 0 then
+            set wp_orcRallySide = wp_orcMajLane
         endif
 
         set h = null
@@ -802,44 +795,90 @@ library IABrainMacro requires IAUtils
     endfunction
 
     // PUNTO DE REUNIÓN para botUnit (resultado en GetWPRallyX/Y). Prioridad:
-    //   1) Cluster del equipo: centroide de los héroes vivos FUERA de base,
-    //      EXCLUYENDO al propio bot (ir a donde está la mayoría: si el equipo
-    //      empuja, el rally avanza con él; si el equipo resetea, retrocede).
-    //   2) Nadie más fuera: la defensa propia más adelantada que siga viva
-    //      (F3/F2 del carril -> anillo F1 -> F0): esperar adelante pero seguro.
+    //   1) Cluster del equipo en UN SOLO LADO: centroide de los héroes vivos
+    //      FUERA de base que están en el lado de reunión del equipo (Top Y>=0 /
+    //      Bot Y<0; mayoría, pegajoso en empate), EXCLUYENDO al propio bot (si
+    //      el equipo empuja, el rally avanza con él; si resetea, retrocede).
+    //      Si el bot está del OTRO lado, primero va a su base propia de ese
+    //      lado (misma U que ApplyRerouteIfNeeded: no cruza por la base enemiga).
+    //   2) Nadie más en ese lado: la defensa propia más adelantada que siga
+    //      viva (F3/F2 de ese lado -> anillo F1 -> F0): esperar adelante pero
+    //      seguro; el resto del equipo viene a este lado.
     //   3) Último recurso (sin estructuras, no debería darse): fuente propia.
+    //
+    // FIX TRAMPA-CENTRO (2026-10-13): antes el cluster era el centroide de TODO
+    // el equipo. Con aliados repartidos entre Top y Bot el promedio caía ENTRE
+    // los carriles, dentro de la montaña central (intransitable); el "move" del
+    // motor deja al bot en el punto alcanzable más cercano = el callejón de la
+    // tienda secreta, pegado a la pared y quieto. Se auto-refuerza (el bot
+    // atascado, ya fuera de base, mantiene el promedio en el centro) y volvía
+    // ahí tras comprar o tras un TP a base. Un solo lado nunca promedia a través
+    // de la montaña.
     public function ResolveRally takes unit botUnit, integer lane returns nothing
         local boolean isHum = IsPlayerAlly(GetOwningPlayer(botUnit), Player(0))
-        local real bx = GetUnitX(botUnit)
-        local real by = GetUnitY(botUnit)
-        local real sx
-        local real sy
-        local integer n
+        local integer side
+        local integer i = 0
+        local unit h
+        local real hx
+        local real hy
+        local real sx = 0.0
+        local real sy = 0.0
+        local integer n = 0
 
         if isHum then
-            set sx = wp_humOutSumX
-            set sy = wp_humOutSumY
-            set n = wp_humOutN
+            set side = wp_humRallySide
         else
-            set sx = wp_orcOutSumX
-            set sy = wp_orcOutSumY
-            set n = wp_orcOutN
+            set side = wp_orcRallySide
         endif
-        // Excluirme del centroide (si estoy fuera de base, estoy en la suma);
-        // si solo estoy yo fuera, no hay cluster y caemos a la defensa propia.
-        if n > 0 and not InOwnHealingBase(bx, by, isHum) then
-            set sx = sx - bx
-            set sy = sy - by
-            set n = n - 1
+        if side == 0 then
+            set side = lane
         endif
+
+        // Escaneo directo (no el cache) para excluirme por IDENTIDAD: restar mi
+        // posición actual a una suma de hace 0.30s fallaba al cruzar Y=0 o
+        // entrar/salir de base.
+        loop
+            exitwhen i >= IACore_AllHeroCount
+            set h = IACore_AllHeroes[i]
+            if h != null and h != botUnit and GetUnitTypeId(h) != 0 and not IsUnitType(h, UNIT_TYPE_DEAD) and IsPlayerAlly(GetOwningPlayer(h), Player(0)) == isHum then
+                set hx = GetUnitX(h)
+                set hy = GetUnitY(h)
+                if (hy >= 0.0) == (side == 1) and not InOwnHealingBase(hx, hy, isHum) then
+                    set sx = sx + hx
+                    set sy = sy + hy
+                    set n = n + 1
+                endif
+            endif
+            set i = i + 1
+        endloop
+        set h = null
+
         if n > 0 then
-            set wp_rallyX = sx / I2R(n)
-            set wp_rallyY = sy / I2R(n)
+            if (GetUnitY(botUnit) >= 0.0) == (side == 1) then
+                set wp_rallyX = sx / I2R(n)
+                set wp_rallyY = sy / I2R(n)
+            elseif side == 1 then
+                if isHum then
+                    set wp_rallyX = HUM_BASE_TOP_X
+                    set wp_rallyY = HUM_BASE_TOP_Y
+                else
+                    set wp_rallyX = ORC_BASE_TOP_X
+                    set wp_rallyY = ORC_BASE_TOP_Y
+                endif
+            else
+                if isHum then
+                    set wp_rallyX = HUM_BASE_BOT_X
+                    set wp_rallyY = HUM_BASE_BOT_Y
+                else
+                    set wp_rallyX = ORC_BASE_BOT_X
+                    set wp_rallyY = ORC_BASE_BOT_Y
+                endif
+            endif
             return
         endif
 
-        // Defensa propia: F3/F2 del carril (helper existente)...
-        if ResolveOwnDefense(botUnit, lane) then
+        // Defensa propia: F3/F2 del lado de reunión (helper existente)...
+        if ResolveOwnDefense(botUnit, side) then
             set wp_rallyX = bm_defX
             set wp_rallyY = bm_defY
             return

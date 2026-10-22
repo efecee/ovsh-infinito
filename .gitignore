@@ -4,3 +4,6 @@
 
 # Caché local del registro de habilidades de herramientas de IA.
 .atl/.skill-registry.cache.json
+
+# Datos extraídos del mapa para el análisis de balance (uso local, no se publica).
+BALANCE/

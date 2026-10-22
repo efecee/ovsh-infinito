@@ -248,8 +248,9 @@ scope CommandAS initializer Init
         local trigger t = CreateTrigger()
         local integer i = 0
         
+        // Solo los 10 jugadores: los observadores (slots 10-11) solo tienen -z.
         loop
-            exitwhen i > 15 
+            exitwhen i > 9
             call TriggerRegisterPlayerChatEvent(t, Player(i), "-as", true)
             set i = i + 1
         endloop

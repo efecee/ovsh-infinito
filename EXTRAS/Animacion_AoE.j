@@ -1,238 +1,43 @@
-scope AnimacionAoE initializer Init
+//===========================================================================
+//
+//  ÁREAS DE HABILIDADES — ÚNICA FUENTE DE VERDAD  (library AreaHabilidades)
+//
+//===========================================================================
+//
+//  Aquí vive el ÁREA DE EFECTO de TODA habilidad cuya área usa algún sistema
+//  del mapa: los anillos de este archivo, las asistencias (tabla.j) y los
+//  bots (IA_Data_Buffs.j, IA_Data_Items.j). Ningún otro archivo guarda áreas.
+//
+//  REGLA: si cambias el área de una habilidad en el Editor de Objetos,
+//  cámbiala AQUÍ y listo: todos los sistemas leen de esta lista.
+//
+//  Estar en esta lista NO dibuja un anillo. El anillo solo sale para las
+//  habilidades registradas en IsRegistered() (más abajo, en el scope).
+//  Las de la sección "SIN ANILLO" son solo datos para otros sistemas.
+//
+//  Es una "library": el compilador la sube al inicio del mapa, así que
+//  cualquier archivo puede usarla sin importar el orden de los triggers.
+//  Por eso este trigger NO debe desactivarse.
+//
+//  USO DESDE OTROS ARCHIVOS:
+//    AreaHabilidades_Radio(habilidad, nivel)  → radio (en líneas: el ancho)
+//    AreaHabilidades_Largo(habilidad, nivel)  → recorrido de las de línea
+//    AreaHabilidades_RadioItem(item)          → radio de un ítem (para bots)
+//  Devuelven 0.0 si no está registrada.
+//
+//  ÁREAS DEL MOTOR: el juego afecta a una unidad si su CUERPO toca el
+//  círculo. Quien use estos radios para buscar unidades debe filtrar con
+//  IsUnitInRangeXY (ver MB_AOE_ENUM_SLACK en tabla.j).
+//
+//===========================================================================
+library AreaHabilidades
 
-    //===========================================================================
-    //
-    //  SISTEMA GENÉRICO: ANILLO VISUAL DE ÁREA DE EFECTO (Lightning Ring)
-    //
-    //===========================================================================
-    //
-    //  DESCRIPCIÓN:
-    //    Dibuja un anillo de relámpagos (polígono) alrededor del área de efecto
-    //    de cualquier habilidad registrada. El jugador puede ver EXACTAMENTE
-    //    el perímetro donde la habilidad está haciendo efecto.
-    //
-    //  CÓMO AGREGAR UNA NUEVA HABILIDAD:
-    //    1. En IsRegistered(), agrega:  or id == 'XXXX'
-    //    2. En GetRingMode(), agrega un bloque elseif con el modo
-    //    3. En GetRingLightningType(), agrega el tipo de rayo
-    //    4. En GetRingSegments(), agrega la cantidad de segmentos
-    //    5. En GetRingAoE(), agrega el AoE por nivel
-    //    6. En GetRingDuration(), agrega la duración por nivel
-    //    7. Si es CANALIZADA, en IsChanneled() agrega:  or id == 'XXXX'
-    //
-    //  MODOS:
-    //    RING_FOLLOW_CASTER (0) - Sigue al héroe. Muere si el héroe muere.
-    //                             Ejemplo: Torbellino, Inmolación.
-    //    RING_STATIC_TARGET (1) - Fijo donde apuntaste. Persiste si muere el héroe.
-    //                             Ejemplo: Vista Lejana, Lluvia de Fuego.
-    //    RING_STATIC_CASTER (2) - Fijo donde estaba el héroe. Persiste si muere.
-    //                             Ejemplo: Grito de Guerra, Thunder Clap.
-    //
-    //  TIPOS DE RELÁMPAGO:
-    //    "SPLK" = Spirit Link (fino, sutil)
-    //    "CLPB" = Chain Lightning (eléctrico azul)
-    //    "HWPB" = Healing Wave (verde brillante)
-    //    "DRAM" = Drain Mana (azul, discreto)
-    //    "FORK" = Forked Lightning (bifurcado)
-    //    "LEAS" = Leash (muy fino)
-    //    "AFOD" = Finger of Death (oscuro)
-    //
-    //  CASO NO CUBIERTO:
-    //    Si encuentras una habilidad que no encaja en ningún modo,
-    //    documéntala aquí y diseña un nuevo modo antes de implementar.
-    //
-    //===========================================================================
-    //
-    //  MOTOR (refactor 2026-06-20) — POR QUÉ ES ROBUSTO:
-    //
-    //    Antes cada anillo arrancaba SU PROPIO timer de 0.03s. En un 5v5 con
-    //    muchos casts simultáneos eso era una tormenta de timers, y CUALQUIER
-    //    carrera entre los puntos de limpieza (expiración / muerte / ENDCAST /
-    //    re-toggle) podía dejar relámpagos huérfanos pegados al mapa para siempre
-    //    (sobre todo en PCs lentas, donde el orden de los eventos cambia).
-    //
-    //    Ahora hay UN SOLO timer-motor (Driver) que recorre la lista de anillos
-    //    activos cada 0.03s. Invariante central:
-    //
-    //        ringInUse[idx]  <=>  idx está en activeList  <=>  sus relámpagos viven
-    //
-    //    El Driver es la ÚNICA autoridad: cuenta el tiempo de TODOS los anillos
-    //    activos cada tick y limpia exactamente al llegar a 0. No existe ningún
-    //    camino por el que un anillo siga dibujado sin que el Driver lo esté
-    //    contando => es IMPOSIBLE que un anillo "se quede pegado". Como cada
-    //    anillo lleva su PROPIO tiempo restante, el barrido nunca borra uno
-    //    todavía válido: solo cae el que ya cumplió su duración.
-    //
-    //    Blindajes adicionales:
-    //      - CleanupRingByIdx es IDEMPOTENTE (guarda ringInUse): llamarlo dos
-    //        veces sobre el mismo anillo no hace nada la segunda vez. Se acabó el
-    //        doble-free / doble-destroy que envenenaba el pool de índices.
-    //      - El pool está ACOTADO a MAX_RINGS con expulsión del más próximo a
-    //        expirar => nunca crece sin límite ni desborda el array.
-    //
-    //    AISLAMIENTO: este sistema NO usa udg_MB_Hash ni ningún global/hashtable
-    //    compartido. Todo su estado vive en arrays PRIVADOS de este scope + un
-    //    único timer privado. No puede interferir con la tabla de kills/muertes/
-    //    asistencias ni con ningún otro sistema.
-    //
-    //===========================================================================
-
-
-    // ==========================================
-    // ===   CONSTANTES Y ALMACENAMIENTO      ===
-    // ==========================================
-
-    globals
-        constant integer RING_FOLLOW_CASTER = 0
-        constant integer RING_STATIC_TARGET = 1
-        constant integer RING_STATIC_CASTER = 2
-
-        private constant integer MAX_SEGMENTS = 48   // Debe ser >= al mayor GetRingSegments
-        private constant integer MAX_RINGS    = 64   // Tope del pool. 64*48=3072 < 8192 (límite de array)
-        private constant real    TICK         = 0.03 // Periodo del motor (igual que antes, movimiento suave)
-        private constant real    FADE_DURATION = 1.5 // Segundos extra para desvanecimiento
-        private constant real    RING_BASE_ALPHA = 0.40 // Alpha base del estilo gris (resto de habilidades)
-        private constant real    RING_ITEM_ALPHA = 0.05 // Alpha base de la categoría OBJETOS (pálido/sutil; sube=más visible, baja=casi invisible)
-
-        // --- Estado por anillo (indexado por ringIdx 0..MAX_RINGS-1) ---
-        private lightning array ringData        // [ringIdx * MAX_SEGMENTS + segmento]
-        private boolean   array ringInUse       // dueño del slot: true mientras el anillo vive
-        private unit      array ringCaster      // héroe que lo creó
-        private integer   array ringAbil        // rawcode de la habilidad
-        private integer   array ringMode        // RING_FOLLOW_CASTER / STATIC_TARGET / STATIC_CASTER
-        private integer   array ringSeg         // nº de segmentos de ESTE anillo
-        private real      array ringRadius      // radio (AoE) para mover los segmentos (modo FOLLOW)
-        private real      array ringRemaining   // segundos de juego restantes (incluye el fade)
-        private boolean   array ringTimed       // true = expira por tiempo; false = toggle (vive según buff)
-        private integer   array ringToggleBuff  // buff del toggle (0 si no es toggle)
-        private boolean   array ringSkipEndcast // toggle: ignorar UNA vez el ENDCAST de activación
-
-        // --- Allocator de índices (pila de libres + marca de agua) ---
-        private integer   array freeStack
-        private integer freeCount = 0
-        private integer nextIndex = 0
-
-        // --- Lista compacta de anillos activos (iteración O(activos) y borrado O(1)) ---
-        private integer   array activeList      // activeList[0..activeCount-1] = ringIdx
-        private integer   array activePos       // activePos[ringIdx] = su posición en activeList
-        private integer activeCount = 0
-
-        // --- Motor ---
-        private timer DriverTimer = null
-        private boolean driverRunning = false
-    endglobals
-
-
-    // ==========================================
-    // ===   CONFIGURACIÓN DE HABILIDADES     ===
-    // ==========================================
-    // Modifica estas funciones para agregar/cambiar habilidades.
-    // Sigue los ejemplos existentes.
-
-    // --- PASO 1: Registrar la habilidad ---
-    // Agrega el raw code de tu habilidad con:  or id == 'XXXX'
-    private function IsRegistered takes integer id returns boolean
-        return id == 'AOww' or id == 'A046' or id == 'AOfs' or id == 'AEfk' or id == 'AHtc' or id == 'A00F' or id == 'AEsf' or id == 'AEtq' or id == 'AOws' or id == 'Awrs' or id == 'AOvd' or id == 'AUan' or id == 'AUls' or id == 'ANht' or id == 'AEim' or id == 'A03O' or id == 'A04L' or id == 'A03C' or id == 'AItb'
-    endfunction
-
-    // --- PASO 7 (opcional): Marcar como canalizada ---
-    // Si la habilidad se puede interrumpir con stun y el anillo
-    // debe desaparecer al interrumpirse, agrégala aquí.
-    private function IsChanneled takes integer id returns boolean
-        return id == 'AEsf' or id == 'AEtq' or id == 'AOvd'
-    endfunction
-
-    // --- PASO 8 (opcional): Marcar como Toggle ---
-    // Habilidades que se activan/desactivan manualmente (ej: Inmolación).
-    // El anillo aparece al activar y desaparece al desactivar o sin maná.
-    private function IsToggle takes integer id returns boolean
-        return id == 'AEim' or id == 'A03O'
-    endfunction
-
-    // --- PASO 9 (solo toggles): Buff asociado al toggle ---
-    // Cuando este buff desaparece del héroe, el anillo se destruye.
-    // Es lo que permite detectar la desactivación (WC3 no dispara eventos).
-    private function GetToggleBuff takes integer id returns integer
-        if (id == 'AEim') or (id == 'A03O') then
-            return 'BEim'
-        endif
-        return 0
-    endfunction
-
-    // --- PASO 2: Modo de comportamiento ---
-    private function GetRingMode takes integer id returns integer
-        // Torbellino / Estrella Fugaz: sigue al héroe
-        if (id == 'AOww') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOvd') or (id == 'AUls') or (id == 'AEim') or (id == 'A03O') then
-            return RING_FOLLOW_CASTER
-            // Vista Lejana: fijo donde apuntaste
-        elseif (id == 'AOfs') or (id == 'A046') then
-            return RING_STATIC_TARGET
-            // Abanico / Trueno / Grito / Detector (objeto AItb): instantánea, centrada en el héroe
-        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'Awrs') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
-            return RING_STATIC_CASTER
-        endif
-        return RING_FOLLOW_CASTER
-    endfunction
-
-    // --- PASO 3: Tipo de relámpago ---
-    private function GetRingLightningType takes integer id returns string
-        if (id == 'AOww') or (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'AEim') or (id == 'A03O') or (id == 'A04L') or (id == 'A03C') then
-            return "LEAS"
-        elseif (id == 'AOfs') or (id == 'A046') then
-            return "SPLK"
-        elseif (id == 'AItb') then
-            // Objeto detector: rayo frío/pálido (azul muy claro, casi blanco)
-            return "DRAM"
-        endif
-        return "LEAS"
-    endfunction
-
-    // --- PASO 4: Número de segmentos ---
-    // Más segmentos = círculo más suave (18-36 recomendado)
-    private function GetRingSegments takes integer id returns integer
-        if (id == 'AOww') or (id == 'AEim') or (id == 'A03O') then
-            return 18
-        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEtq') or (id == 'AEsf') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') then
-            return 24
-        elseif (id == 'AOfs') or (id == 'A046') or (id == 'AItb') then
-            return 42
-        endif
-        return 24
-    endfunction
-
-    // --- PASO 4b: Categoría OBJETOS (anillos con color propio) ---
-    // Anillos que vienen de un ÍTEM y deben verse distintos al resto:
-    // blanco muy fino y casi invisible, en vez del gris de las habilidades.
-    // Para sumar otro objeto a esta categoría: agrega  or id == 'XXXX'
-    private function IsItemRing takes integer id returns boolean
-        return id == 'AItb'
-    endfunction
-
-    // --- PASO 4c: Color y opacidad del anillo ---
-    // Usa SetLightningColor(l, rojo, verde, azul, alpha). Valores de 0.0 a 1.0;
-    // alpha bajo = más transparente. `alphaScale` (0.0 a 1.0) atenúa la opacidad
-    // base: 1.0 = opacidad plena; durante el desvanecimiento baja de 1.0 a 0.0.
-    //
-    // FUENTE ÚNICA del color: tanto la creación como el fade llaman aquí, así
-    // que el color/opacidad de cada anillo se define en UN solo lugar.
-    //
-    // ESTILOS:
-    //   Gris sutil (habilidades): 0.55, 0.55, 0.60  @ RING_BASE_ALPHA
-    //   Blanco casi invisible (objetos): 1.00, 1.00, 1.00  @ RING_ITEM_ALPHA
-    //
-    private function ApplyRingColorScaled takes lightning l, integer id, real alphaScale returns nothing
-        if IsItemRing(id) then
-            // Categoría OBJETOS: blanco muy sutil, casi invisible
-            call SetLightningColor(l, 1.00, 1.00, 1.00, RING_ITEM_ALPHA * alphaScale)
-        else
-            // Estilo sutil gris para el resto de las habilidades
-            call SetLightningColor(l, 0.55, 0.55, 0.60, RING_BASE_ALPHA * alphaScale)
-        endif
-    endfunction
-
-    // --- PASO 5: Área de efecto por nivel ---
-    // Debe coincidir con el Editor de Objetos.
-    private function GetRingAoE takes integer id, integer level returns real
+    // Radio por nivel. Para habilidades en LÍNEA (Empalar, Carne de Carnicero)
+    // es el ANCHO a cada lado de la línea; su recorrido está en Largo().
+    public function Radio takes integer id, integer level returns real
+        // =================================================================
+        //  CON ANILLO — registradas también en IsRegistered (scope de abajo)
+        // =================================================================
         // ========== TORBELLINO DE CUCHILLAS (AOww) — 6 niveles ==========
         if (id == 'AOww') then
             if (level == 1) then
@@ -475,8 +280,381 @@ scope AnimacionAoE initializer Init
             // ========== DETECTOR (objeto AItb) — 1000 fijo, sin niveles ==========
         elseif (id == 'AItb') then
             return 1000.0
+            // =================================================================
+            //  SIN ANILLO — solo datos para otros sistemas (asistencias, bots).
+            //  No dibujan nada; para darles anillo, registrarlas en IsRegistered.
+            // =================================================================
+            // ========== SILENCIO (ANsi, Sylvanas) — 10 niveles, área elegible ==========
+        elseif (id == 'ANsi') then
+            if (level == 1) then
+                return 200.0
+            elseif (level == 2) then
+                return 232.0
+            elseif (level == 3) then
+                return 264.0
+            elseif (level == 4) then
+                return 296.0
+            elseif (level == 5) then
+                return 328.0
+            elseif (level == 6) then
+                return 360.0
+            elseif (level == 7) then
+                return 392.0
+            elseif (level == 8) then
+                return 424.0
+            elseif (level == 9) then
+                return 456.0
+            elseif (level == 10) then
+                return 488.0
+            endif
+            return 200.0
+            // ========== PULVERIZADOR CURATIVO (ANhs, Alquimista) — 250 fijo ==========
+        elseif (id == 'ANhs') then
+            return 250.0
+            // ========== EMPALAR (AUim) — línea: ANCHO por nivel (recorrido en Largo) ==========
+        elseif (id == 'AUim') then
+            if (level == 1) then
+                return 250.0
+            elseif (level == 2) then
+                return 262.0
+            elseif (level == 3) then
+                return 274.0
+            elseif (level == 4) then
+                return 286.0
+            elseif (level == 5) then
+                return 298.0
+            elseif (level == 6) then
+                return 310.0
+            elseif (level == 7) then
+                return 322.0
+            elseif (level == 8) then
+                return 334.0
+            elseif (level == 9) then
+                return 346.0
+            elseif (level == 10) then
+                return 358.0
+            endif
+            return 250.0
+            // ========== CARNE DE CARNICERO (A03N) — línea: ANCHO 125 fijo (recorrido en Largo) ==========
+        elseif (id == 'A03N') then
+            return 125.0
+            // ========== INFERNAL (AUin) / MAGO INFERNAL (A00B) — stun al caer, 6 niveles ==========
+        elseif (id == 'AUin') or (id == 'A00B') then
+            if (level == 1) then
+                return 250.0
+            elseif (level == 2) then
+                return 280.0
+            elseif (level == 3) then
+                return 310.0
+            elseif (level == 4) then
+                return 340.0
+            elseif (level == 5) then
+                return 370.0
+            elseif (level == 6) then
+                return 400.0
+            endif
+            return 250.0
+            // ========== INFERNAL DEL ÍTEM (AIin, Piedra Infernal 'infs') — 250 fijo ==========
+        elseif (id == 'AIin') then
+            return 250.0
+            // ========== COHETES DE DISPERSIÓN (ANcs, Hojalatero) — 275 fijo ==========
+        elseif (id == 'ANcs') then
+            return 275.0
+            // ========== VARITA DE NEGACIÓN (AIdi, ítem) — 325 fijo ==========
+        elseif (id == 'AIdi') then
+            return 325.0
+            // ========== BENDICIÓN DIVINA (A01Y, Lord Garithos) — aura 900 fijo ==========
+        elseif (id == 'A01Y') then
+            return 900.0
+            // ========== AURA DE RESISTENCIA (AOae, Jefe Tauren) — aura 900 fijo ==========
+        elseif (id == 'AOae') then
+            return 900.0
         endif
         return 0.0
+    endfunction
+
+    // Recorrido de las habilidades en LÍNEA (desde el héroe hacia el punto).
+    public function Largo takes integer id, integer level returns real
+        if (id == 'AUim') then
+            // Empalar (Señor de la Cripta)
+            return 600.0
+        elseif (id == 'A03N') then
+            // Carne de Carnicero (Butcher) — línea muy corta
+            return 30.0
+        endif
+        return 0.0
+    endfunction
+
+    // Radio de un ÍTEM (lo usan los bots, que razonan por ítem). Si el ítem
+    // usa una habilidad ya registrada arriba, se lee de ahí (sin repetir el
+    // número): así, cambiar la habilidad cambia también el ítem.
+    public function RadioItem takes integer itemId returns real
+        if (itemId == 'wneg' or itemId == 'I012' or itemId == 'I01S') then
+            // Varita de Negación de 3, 6 y 9 cargas
+            return Radio('AIdi', 1)
+        elseif (itemId == 'infs') then
+            // Piedra Infernal
+            return Radio('AIin', 1)
+        elseif (itemId == 'dust') then
+            // Polvo de Aparición: radio de revelado
+            return 1000.0
+        elseif (itemId == 'ofir') then
+            // Esfera de Fuego: salpicadura del orbe
+            return 140.0
+        elseif (itemId == 'ajen' or itemId == 'afac' or itemId == 'sbch' or itemId == 'lgdh') then
+            // Auras de ítems: Ancestro Janggo, Flauta de Alleria,
+            // Campanillas de hueso del Azote, Cuerno del Apocalipsis
+            return 900.0
+        elseif (itemId == 'I01J') then
+            // Tambores de Guerra 1 (aura)
+            return 1000.0
+        elseif (itemId == 'I003') then
+            // Amuleto Antimagia (aura de espinas)
+            return 1000.0
+        endif
+        return 0.0
+    endfunction
+
+endlibrary
+
+scope AnimacionAoE initializer Init
+
+    //===========================================================================
+    //
+    //  SISTEMA GENÉRICO: ANILLO VISUAL DE ÁREA DE EFECTO (Lightning Ring)
+    //
+    //===========================================================================
+    //
+    //  DESCRIPCIÓN:
+    //    Dibuja un anillo de relámpagos (polígono) alrededor del área de efecto
+    //    de cualquier habilidad registrada. El jugador puede ver EXACTAMENTE
+    //    el perímetro donde la habilidad está haciendo efecto.
+    //
+    //  CÓMO AGREGAR UNA NUEVA HABILIDAD:
+    //    1. En IsRegistered(), agrega:  or id == 'XXXX'
+    //    2. En GetRingMode(), agrega un bloque elseif con el modo
+    //    3. En GetRingLightningType(), agrega el tipo de rayo
+    //    4. En GetRingSegments(), agrega la cantidad de segmentos
+    //    5. En la library AreaHabilidades (inicio del archivo), agrega su AoE
+    //       por nivel en Radio(), dentro de la sección "CON ANILLO"
+    //    6. En GetRingDuration(), agrega la duración por nivel
+    //    7. Si es CANALIZADA, en IsChanneled() agrega:  or id == 'XXXX'
+    //
+    //  MODOS:
+    //    RING_FOLLOW_CASTER (0) - Sigue al héroe. Muere si el héroe muere.
+    //                             Ejemplo: Torbellino, Inmolación.
+    //    RING_STATIC_TARGET (1) - Fijo donde apuntaste. Persiste si muere el héroe.
+    //                             Ejemplo: Vista Lejana, Lluvia de Fuego.
+    //    RING_STATIC_CASTER (2) - Fijo donde estaba el héroe. Persiste si muere.
+    //                             Ejemplo: Grito de Guerra, Thunder Clap.
+    //
+    //  TIPOS DE RELÁMPAGO:
+    //    "SPLK" = Spirit Link (fino, sutil)
+    //    "CLPB" = Chain Lightning (eléctrico azul)
+    //    "HWPB" = Healing Wave (verde brillante)
+    //    "DRAM" = Drain Mana (azul, discreto)
+    //    "FORK" = Forked Lightning (bifurcado)
+    //    "LEAS" = Leash (muy fino)
+    //    "AFOD" = Finger of Death (oscuro)
+    //
+    //  CASO NO CUBIERTO:
+    //    Si encuentras una habilidad que no encaja en ningún modo,
+    //    documéntala aquí y diseña un nuevo modo antes de implementar.
+    //
+    //===========================================================================
+    //
+    //  MOTOR (refactor 2026-06-20) — POR QUÉ ES ROBUSTO:
+    //
+    //    Antes cada anillo arrancaba SU PROPIO timer de 0.03s. En un 5v5 con
+    //    muchos casts simultáneos eso era una tormenta de timers, y CUALQUIER
+    //    carrera entre los puntos de limpieza (expiración / muerte / ENDCAST /
+    //    re-toggle) podía dejar relámpagos huérfanos pegados al mapa para siempre
+    //    (sobre todo en PCs lentas, donde el orden de los eventos cambia).
+    //
+    //    Ahora hay UN SOLO timer-motor (Driver) que recorre la lista de anillos
+    //    activos cada 0.03s. Invariante central:
+    //
+    //        ringInUse[idx]  <=>  idx está en activeList  <=>  sus relámpagos viven
+    //
+    //    El Driver es la ÚNICA autoridad: cuenta el tiempo de TODOS los anillos
+    //    activos cada tick y limpia exactamente al llegar a 0. No existe ningún
+    //    camino por el que un anillo siga dibujado sin que el Driver lo esté
+    //    contando => es IMPOSIBLE que un anillo "se quede pegado". Como cada
+    //    anillo lleva su PROPIO tiempo restante, el barrido nunca borra uno
+    //    todavía válido: solo cae el que ya cumplió su duración.
+    //
+    //    Blindajes adicionales:
+    //      - CleanupRingByIdx es IDEMPOTENTE (guarda ringInUse): llamarlo dos
+    //        veces sobre el mismo anillo no hace nada la segunda vez. Se acabó el
+    //        doble-free / doble-destroy que envenenaba el pool de índices.
+    //      - El pool está ACOTADO a MAX_RINGS con expulsión del más próximo a
+    //        expirar => nunca crece sin límite ni desborda el array.
+    //
+    //    AISLAMIENTO: este sistema NO usa udg_MB_Hash ni ningún global/hashtable
+    //    compartido. Todo su estado vive en arrays PRIVADOS de este scope + un
+    //    único timer privado. No puede interferir con la tabla de kills/muertes/
+    //    asistencias ni con ningún otro sistema.
+    //
+    //===========================================================================
+
+
+    // ==========================================
+    // ===   CONSTANTES Y ALMACENAMIENTO      ===
+    // ==========================================
+
+    globals
+        constant integer RING_FOLLOW_CASTER = 0
+        constant integer RING_STATIC_TARGET = 1
+        constant integer RING_STATIC_CASTER = 2
+
+        private constant integer MAX_SEGMENTS = 48   // Debe ser >= al mayor GetRingSegments
+        private constant integer MAX_RINGS    = 64   // Tope del pool. 64*48=3072 < 8192 (límite de array)
+        private constant real    TICK         = 0.03 // Periodo del motor (igual que antes, movimiento suave)
+        private constant real    FADE_DURATION = 1.5 // Segundos extra para desvanecimiento
+        private constant real    RING_BASE_ALPHA = 0.40 // Alpha base del estilo gris (resto de habilidades)
+        private constant real    RING_ITEM_ALPHA = 0.05 // Alpha base de la categoría OBJETOS (pálido/sutil; sube=más visible, baja=casi invisible)
+
+        // --- Estado por anillo (indexado por ringIdx 0..MAX_RINGS-1) ---
+        private lightning array ringData        // [ringIdx * MAX_SEGMENTS + segmento]
+        private boolean   array ringInUse       // dueño del slot: true mientras el anillo vive
+        private unit      array ringCaster      // héroe que lo creó
+        private integer   array ringAbil        // rawcode de la habilidad
+        private integer   array ringMode        // RING_FOLLOW_CASTER / STATIC_TARGET / STATIC_CASTER
+        private integer   array ringSeg         // nº de segmentos de ESTE anillo
+        private real      array ringRadius      // radio (AoE) para mover los segmentos (modo FOLLOW)
+        private real      array ringRemaining   // segundos de juego restantes (incluye el fade)
+        private boolean   array ringTimed       // true = expira por tiempo; false = toggle (vive según buff)
+        private integer   array ringToggleBuff  // buff del toggle (0 si no es toggle)
+        private boolean   array ringSkipEndcast // toggle: ignorar UNA vez el ENDCAST de activación
+
+        // --- Allocator de índices (pila de libres + marca de agua) ---
+        private integer   array freeStack
+        private integer freeCount = 0
+        private integer nextIndex = 0
+
+        // --- Lista compacta de anillos activos (iteración O(activos) y borrado O(1)) ---
+        private integer   array activeList      // activeList[0..activeCount-1] = ringIdx
+        private integer   array activePos       // activePos[ringIdx] = su posición en activeList
+        private integer activeCount = 0
+
+        // --- Motor ---
+        private timer DriverTimer = null
+        private boolean driverRunning = false
+    endglobals
+
+
+    // ==========================================
+    // ===   CONFIGURACIÓN DE HABILIDADES     ===
+    // ==========================================
+    // Modifica estas funciones para agregar/cambiar habilidades.
+    // Sigue los ejemplos existentes.
+
+    // --- PASO 1: Registrar la habilidad ---
+    // Agrega el raw code de tu habilidad con:  or id == 'XXXX'
+    private function IsRegistered takes integer id returns boolean
+        return id == 'AOww' or id == 'A046' or id == 'AOfs' or id == 'AEfk' or id == 'AHtc' or id == 'A00F' or id == 'AEsf' or id == 'AEtq' or id == 'AOws' or id == 'Awrs' or id == 'AOvd' or id == 'AUan' or id == 'AUls' or id == 'ANht' or id == 'AEim' or id == 'A03O' or id == 'A04L' or id == 'A03C' or id == 'AItb'
+    endfunction
+
+    // --- PASO 7 (opcional): Marcar como canalizada ---
+    // Si la habilidad se puede interrumpir con stun y el anillo
+    // debe desaparecer al interrumpirse, agrégala aquí.
+    private function IsChanneled takes integer id returns boolean
+        return id == 'AEsf' or id == 'AEtq' or id == 'AOvd'
+    endfunction
+
+    // --- PASO 8 (opcional): Marcar como Toggle ---
+    // Habilidades que se activan/desactivan manualmente (ej: Inmolación).
+    // El anillo aparece al activar y desaparece al desactivar o sin maná.
+    private function IsToggle takes integer id returns boolean
+        return id == 'AEim' or id == 'A03O'
+    endfunction
+
+    // --- PASO 9 (solo toggles): Buff asociado al toggle ---
+    // Cuando este buff desaparece del héroe, el anillo se destruye.
+    // Es lo que permite detectar la desactivación (WC3 no dispara eventos).
+    private function GetToggleBuff takes integer id returns integer
+        if (id == 'AEim') or (id == 'A03O') then
+            return 'BEim'
+        endif
+        return 0
+    endfunction
+
+    // --- PASO 2: Modo de comportamiento ---
+    private function GetRingMode takes integer id returns integer
+        // Torbellino / Estrella Fugaz: sigue al héroe
+        if (id == 'AOww') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOvd') or (id == 'AUls') or (id == 'AEim') or (id == 'A03O') then
+            return RING_FOLLOW_CASTER
+            // Vista Lejana: fijo donde apuntaste
+        elseif (id == 'AOfs') or (id == 'A046') then
+            return RING_STATIC_TARGET
+            // Abanico / Trueno / Grito / Detector (objeto AItb): instantánea, centrada en el héroe
+        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AOws') or (id == 'Awrs') or (id == 'AUan') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') or (id == 'AItb') then
+            return RING_STATIC_CASTER
+        endif
+        return RING_FOLLOW_CASTER
+    endfunction
+
+    // --- PASO 3: Tipo de relámpago ---
+    private function GetRingLightningType takes integer id returns string
+        if (id == 'AOww') or (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEsf') or (id == 'AEtq') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'AEim') or (id == 'A03O') or (id == 'A04L') or (id == 'A03C') then
+            return "LEAS"
+        elseif (id == 'AOfs') or (id == 'A046') then
+            return "SPLK"
+        elseif (id == 'AItb') then
+            // Objeto detector: rayo frío/pálido (azul muy claro, casi blanco)
+            return "DRAM"
+        endif
+        return "LEAS"
+    endfunction
+
+    // --- PASO 4: Número de segmentos ---
+    // Más segmentos = círculo más suave (18-36 recomendado)
+    private function GetRingSegments takes integer id returns integer
+        if (id == 'AOww') or (id == 'AEim') or (id == 'A03O') then
+            return 18
+        elseif (id == 'AEfk') or (id == 'AHtc') or (id == 'A00F') or (id == 'AEtq') or (id == 'AEsf') or (id == 'AOws') or (id == 'Awrs') or (id == 'AOvd') or (id == 'AUan') or (id == 'AUls') or (id == 'ANht') or (id == 'A04L') or (id == 'A03C') then
+            return 24
+        elseif (id == 'AOfs') or (id == 'A046') or (id == 'AItb') then
+            return 42
+        endif
+        return 24
+    endfunction
+
+    // --- PASO 4b: Categoría OBJETOS (anillos con color propio) ---
+    // Anillos que vienen de un ÍTEM y deben verse distintos al resto:
+    // blanco muy fino y casi invisible, en vez del gris de las habilidades.
+    // Para sumar otro objeto a esta categoría: agrega  or id == 'XXXX'
+    private function IsItemRing takes integer id returns boolean
+        return id == 'AItb'
+    endfunction
+
+    // --- PASO 4c: Color y opacidad del anillo ---
+    // Usa SetLightningColor(l, rojo, verde, azul, alpha). Valores de 0.0 a 1.0;
+    // alpha bajo = más transparente. `alphaScale` (0.0 a 1.0) atenúa la opacidad
+    // base: 1.0 = opacidad plena; durante el desvanecimiento baja de 1.0 a 0.0.
+    //
+    // FUENTE ÚNICA del color: tanto la creación como el fade llaman aquí, así
+    // que el color/opacidad de cada anillo se define en UN solo lugar.
+    //
+    // ESTILOS:
+    //   Gris sutil (habilidades): 0.55, 0.55, 0.60  @ RING_BASE_ALPHA
+    //   Blanco casi invisible (objetos): 1.00, 1.00, 1.00  @ RING_ITEM_ALPHA
+    //
+    private function ApplyRingColorScaled takes lightning l, integer id, real alphaScale returns nothing
+        if IsItemRing(id) then
+            // Categoría OBJETOS: blanco muy sutil, casi invisible
+            call SetLightningColor(l, 1.00, 1.00, 1.00, RING_ITEM_ALPHA * alphaScale)
+        else
+            // Estilo sutil gris para el resto de las habilidades
+            call SetLightningColor(l, 0.55, 0.55, 0.60, RING_BASE_ALPHA * alphaScale)
+        endif
+    endfunction
+
+    // --- PASO 5: Área de efecto por nivel ---
+    // Los valores viven en la library AreaHabilidades, al inicio de este
+    // archivo: es la única fuente de áreas del mapa (anillos, asistencias, bots).
+    private function GetRingAoE takes integer id, integer level returns real
+        return AreaHabilidades_Radio(id, level)
     endfunction
 
     // --- PASO 6: Duración por nivel ---

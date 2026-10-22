@@ -16,9 +16,13 @@
 //        lo sigue).
 //     3. Al llegar (distancia <= radio de impacto):
 //        - Daño porcentual al enemigo (% de SU vida actual).
-//        - Auto-daño porcentual al caster (% de SU vida actual).
-//        - Efecto visual de impacto (War Stomp + sangre).
-//        - Dummy Caster aplica Slow (A03Z) al nivel correspondiente.
+//        - REGLA DEL PACTO: si el golpe conecta (el enemigo perdió vida),
+//          el caster paga SIEMPRE su % de vida actual, aunque esté
+//          protegido (Gran Vudú, Banish...). Si no conecta (Banish,
+//          Escudo Divino, Ciclón en la víctima), no paga nadie.
+//        - Efecto visual de impacto (War Stomp + sangre): SOLO si conectó.
+//        - Dummy Caster aplica Slow (A03Z) al nivel correspondiente: SOLO
+//          si conectó (si no, no gasta el Amuleto Antimagia de la víctima).
 //        - Auto-ataque inmediato al enemigo.
 //     4. Se interrumpe si el caster o el target mueren, o si el caster
 //        recibe orden Stop.
@@ -35,7 +39,7 @@
 // ║  ► DAÑO PORCENTUAL (% de vida actual, por nivel):                  ║
 // ║    → Aquí, función LB_GetDamagePercent.                            ║
 // ║    → Se aplica UNA vez al impactar. Tanto al enemigo como al       ║
-// ║      caster (auto-daño).                                           ║
+// ║      caster (auto-daño), o a ninguno si el golpe no conecta.       ║
 // ║                                                                    ║
 // ║  ► VELOCIDAD DE VUELO (por nivel):                                 ║
 // ║    → Aquí, función LB_GetFlightSpeed.                              ║
@@ -216,6 +220,9 @@ scope LifeBreak initializer Init
         local unit dummy
         local real targetDmg
         local real casterDmg
+        local real lifeBefore
+        local real manaBefore
+        local real newLife
 
         // =============================================
         // 1. CONDICIÓN DE INTERRUPCIÓN
@@ -251,29 +258,53 @@ scope LifeBreak initializer Init
             call DestroyEffect(data.flightSfx)
             call ResetUnitAnimation(data.caster)
 
-            // Efecto de impacto en el suelo
-            call DestroyEffect(AddSpecialEffect(LB_GetImpactSfxPath(), tx, ty))
-
             // Solo aplicar daño, slow y auto-ataque si es enemigo
             if IsUnitEnemy(data.target, GetOwningPlayer(data.caster)) then
 
                 // Matemáticas del daño porcentual
-                set targetDmg = GetWidgetLife(data.target) * data.pct
+                set lifeBefore = GetWidgetLife(data.target)
+                set manaBefore = GetUnitState(data.target, UNIT_STATE_MANA)
+                set targetDmg = lifeBefore * data.pct
                 set casterDmg = GetWidgetLife(data.caster) * data.pct
 
-                // Efecto de sangre en el target
-                call DestroyEffect(AddSpecialEffectTarget(LB_GetBloodSfxPath(), data.target, "chest"))
-
-                // Aplicar daños (Caos + Universal = daño puro)
+                // Daño a la víctima (Caos + Universal = daño puro, salvo
+                // etéreos: Caos x0 contra Banish)
                 call UnitDamageTarget(data.caster, data.target, targetDmg, true, false, ATTACK_TYPE_CHAOS, DAMAGE_TYPE_UNIVERSAL, WEAPON_TYPE_WHOKNOWS)
-                call UnitDamageTarget(data.caster, data.caster, casterDmg, true, false, ATTACK_TYPE_CHAOS, DAMAGE_TYPE_UNIVERSAL, WEAPON_TYPE_WHOKNOWS)
 
-                // Dummy Caster: aplicar ralentización
-                set dummy = CreateUnit(GetOwningPlayer(data.caster), DUMMY_ID, tx, ty, 0)
-                call UnitAddAbility(dummy, SLOW_ID)
-                call SetUnitAbilityLevel(dummy, SLOW_ID, data.level)
-                call IssueTargetOrder(dummy, "slow", data.target)
-                call UnitApplyTimedLife(dummy, 'BTLF', 1.0)
+                // REGLA DEL PACTO: si el golpe conecta, pagan los dos; si no
+                // conecta, no paga nadie. "Conecta" = la víctima perdió vida
+                // (o maná, si un Escudo de Maná absorbió el golpe). Se mide
+                // en vez de listar buffs: Banish, Escudo Divino, Ciclón o
+                // cualquier protección futura dejan el golpe en 0 y el motor
+                // es quien lo decide.
+                if GetWidgetLife(data.target) < lifeBefore or GetUnitState(data.target, UNIT_STATE_MANA) < manaBefore then
+
+                    // El precio del Troll NO es daño: se resta directo para
+                    // que ninguna protección propia (Gran Vudú, Banish sobre
+                    // él, Escudo Divino en aleatorio) se lo perdone. Nunca lo
+                    // mata: SetWidgetLife a 0 no le daría la muerte a nadie.
+                    if GetWidgetLife(data.caster) >= 0.405 then
+                        set newLife = GetWidgetLife(data.caster) - casterDmg
+                        if newLife < 1.00 then
+                            set newLife = RMinBJ(1.00, GetWidgetLife(data.caster))
+                        endif
+                        call SetWidgetLife(data.caster, newLife)
+                    endif
+
+                    // Efectos de impacto (War Stomp + sangre): son la señal
+                    // visible de que hubo reducción de vida. Sin golpe, no salen.
+                    call DestroyEffect(AddSpecialEffect(LB_GetImpactSfxPath(), tx, ty))
+                    call DestroyEffect(AddSpecialEffectTarget(LB_GetBloodSfxPath(), data.target, "chest"))
+
+                    // Dummy Caster: aplicar ralentización. También solo si
+                    // conectó: un golpe nulo (Banish...) no lanza el slow, así
+                    // no le gasta el Amuleto Antimagia a la víctima.
+                    set dummy = CreateUnit(GetOwningPlayer(data.caster), DUMMY_ID, tx, ty, 0)
+                    call UnitAddAbility(dummy, SLOW_ID)
+                    call SetUnitAbilityLevel(dummy, SLOW_ID, data.level)
+                    call IssueTargetOrder(dummy, "slow", data.target)
+                    call UnitApplyTimedLife(dummy, 'BTLF', 1.0)
+                endif
 
                 // Forzar auto-ataque inmediato al enemigo
                 call IssueTargetOrder(data.caster, "attack", data.target)

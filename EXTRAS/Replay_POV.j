@@ -35,16 +35,24 @@ library GameStatus initializer GameStatus_Init
     endfunction
 
     private function GameStatus_Init takes nothing returns nothing
-        local player firstPlayer = Player(0)
+        local player firstPlayer
         local unit dummy
         local boolean selected
+        local integer i = 0
 
-        // Todo mapa jugable tiene al menos un slot humano activo. Se usa solo
-        // durante la inicializacion y el dummy se elimina inmediatamente.
+        // Todo mapa jugable tiene al menos un slot humano activo (en una sala
+        // de solo bots, el observador, slots 10-11). Se usa solo durante la
+        // inicializacion y el dummy se elimina inmediatamente. Si no aparece
+        // ninguno, queda OFFLINE: GetReplayPlayer devuelve GetLocalPlayer.
         loop
-            exitwhen GetPlayerController(firstPlayer) == MAP_CONTROL_USER and GetPlayerSlotState(firstPlayer) == PLAYER_SLOT_STATE_PLAYING
-            set firstPlayer = Player(GetPlayerId(firstPlayer) + 1)
+            exitwhen i > 11
+            exitwhen GetPlayerController(Player(i)) == MAP_CONTROL_USER and GetPlayerSlotState(Player(i)) == PLAYER_SLOT_STATE_PLAYING
+            set i = i + 1
         endloop
+        if i > 11 then
+            return
+        endif
+        set firstPlayer = Player(i)
 
         set dummy = CreateUnit(firstPlayer, GAME_STATUS_DUMMY_ID, 0.0, 0.0, 0.0)
         call SelectUnit(dummy, true)
@@ -76,10 +84,11 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
 
     // Avisos publicos compatibles con el POV de las repeticiones. En partida
     // normal cada cliente recibe una sola copia: la destinada a su propio slot.
+    // Llegan hasta el slot 11: los observadores (slots 10-11) tambien los ven.
     function Replay_DisplayTimedTextToAll takes real duration, string message returns nothing
         local integer i = 0
         loop
-            exitwhen i > 9
+            exitwhen i > 11
             call DisplayTimedTextToPlayer(Player(i), 0, 0, duration, message)
             set i = i + 1
         endloop
@@ -88,7 +97,7 @@ library ReplayPOVDetection initializer ReplayPOV_Init requires GameStatus
     function Replay_DisplayTextToAll takes string message returns nothing
         local integer i = 0
         loop
-            exitwhen i > 9
+            exitwhen i > 11
             call DisplayTextToPlayer(Player(i), 0, 0, message)
             set i = i + 1
         endloop
